@@ -3,6 +3,11 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v2.0.1 or sha-cf62857)"
+        required: true
 
 permissions:
   contents: read
@@ -19,12 +24,25 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version
+        id: ver
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            echo "version=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build + push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ghcr.io/dakasa-yggdrasil/integration-stripe:${{ github.ref_name }}
+            ghcr.io/dakasa-yggdrasil/integration-stripe:${{ steps.ver.outputs.version }}
             ghcr.io/dakasa-yggdrasil/integration-stripe:latest
             ghcr.io/dakasa-yggdrasil/integration-stripe:sha-${{ github.sha }}
