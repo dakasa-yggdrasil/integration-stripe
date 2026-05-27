@@ -308,6 +308,33 @@ func TestExecute_ListCharges(t *testing.T) {
 	require.Equal(t, false, resp.Output["has_more"])
 }
 
+func TestExecute_CreatePayout(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/payouts", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		require.Equal(t, "acct_xyz", r.Header.Get("Stripe-Account"))
+		_, _ = w.Write([]byte(`{"id":"po_test","status":"pending","arrival_date":1700000000,"method":"standard"}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationCreatePayout,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"amount":         1000,
+			"currency":       "brl",
+			"stripe_account": "acct_xyz",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "po_test", resp.Output["payout_id"])
+	require.Equal(t, "pending", resp.Output["status"])
+	require.Equal(t, "standard", resp.Output["method"])
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now
