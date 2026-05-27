@@ -5,10 +5,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/dakasa-yggdrasil/integration-stripe/family/contract"
 )
@@ -16,7 +18,7 @@ import (
 func TestSpec_ProviderAndVersion(t *testing.T) {
 	require.Equal(t, "stripe", Provider)
 	require.Equal(t, "stripe", IntegrationType)
-	require.Equal(t, "2.2.2", AdapterVersion)
+	require.Equal(t, "2.2.3", AdapterVersion)
 	require.Equal(t, "2024-12-18.acacia", StripeAPIVersion)
 }
 
@@ -530,6 +532,89 @@ func TestSpec_StripeCreateRefundOnAllowlist(t *testing.T) {
 	// create_refund stays — money-movement action per spec §11.3.
 	if !names["create_refund"] {
 		t.Error("create_refund must remain (allowlisted action)")
+	}
+}
+
+// TestSpec_CredentialSchemaDeclaresBothKeyAliases pins the v2.2.3
+// fix at the schema declaration: yggdrasil-core validates incoming
+// instance configs against THIS exact CredentialSchema.Properties
+// map. If either field name is missing, core rejects the instance
+// with "integration credentials field %q is not declared in the
+// integration_type schema" BEFORE the request ever reaches the
+// adapter — so the v2.2.2 adapter-level alias logic in
+// adapter.Execute (clientForInstance) cannot be exercised.
+//
+// Both fields MUST be declared and secret=true. The instance-side
+// alias resolution preference (stripe_api_key wins over
+// stripe_secret_key) lives in adapter.go and is covered by
+// TestExecute_StripeAPIKeyPrefersCanonicalOverAlias; this test
+// only owns the schema-declaration shape.
+func TestSpec_CredentialSchemaDeclaresBothKeyAliases(t *testing.T) {
+	desc := Describe()
+	props := desc.CredentialSchema.Properties
+	if props == nil {
+		t.Fatalf("CredentialSchema.Properties is nil")
+	}
+	canonical, ok := props["stripe_api_key"]
+	if !ok {
+		t.Fatalf("CredentialSchema.Properties missing %q", "stripe_api_key")
+	}
+	if canonical.Type != "string" {
+		t.Errorf("stripe_api_key.Type = %q, want string", canonical.Type)
+	}
+	if !canonical.Secret {
+		t.Errorf("stripe_api_key.Secret = false, want true")
+	}
+	alias, ok := props["stripe_secret_key"]
+	if !ok {
+		t.Fatalf("CredentialSchema.Properties missing %q — operators using AWS Secrets Manager entries named with this field will be rejected at the yggdrasil-core validator BEFORE reaching the adapter-level alias logic", "stripe_secret_key")
+	}
+	if alias.Type != "string" {
+		t.Errorf("stripe_secret_key.Type = %q, want string", alias.Type)
+	}
+	if !alias.Secret {
+		t.Errorf("stripe_secret_key.Secret = false, want true")
+	}
+}
+
+// TestManifest_IntegrationTypeYAML_DeclaresBothKeyAliases pins the
+// YAML manifest at `manifest/integration_type.stripe.yaml` so the
+// schema declared there stays aligned with the in-process
+// Describe() Go struct. The YAML is the wire format registered into
+// yggdrasil-core via `POST /api/v1/manifests?kind=integration_type`;
+// any divergence between the Go-level CredentialSchema and the YAML
+// will surface as a registration-time validator gap (the v2.2.2
+// regression where stripe_secret_key was accepted in adapter.go and
+// declared in spec.go but missing from the YAML actually registered
+// into core).
+func TestManifest_IntegrationTypeYAML_DeclaresBothKeyAliases(t *testing.T) {
+	data, err := os.ReadFile("../../../manifest/integration_type.stripe.yaml")
+	if err != nil {
+		t.Fatalf("read integration_type manifest: %v", err)
+	}
+	var doc struct {
+		Spec struct {
+			CredentialSchema struct {
+				Properties map[string]struct {
+					Type   string `yaml:"type"`
+					Secret bool   `yaml:"secret"`
+				} `yaml:"properties"`
+			} `yaml:"credential_schema"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("parse manifest yaml: %v", err)
+	}
+	props := doc.Spec.CredentialSchema.Properties
+	if _, ok := props["stripe_api_key"]; !ok {
+		t.Errorf("integration_type.stripe.yaml credential_schema missing %q", "stripe_api_key")
+	}
+	if _, ok := props["stripe_secret_key"]; !ok {
+		t.Errorf("integration_type.stripe.yaml credential_schema missing %q — yggdrasil-core registers this YAML and validates instances against it; adapter-side aliasing cannot bypass the validator", "stripe_secret_key")
+	}
+	// Secret bit also flows through the YAML.
+	if got := props["stripe_secret_key"]; !got.Secret || got.Type != "string" {
+		t.Errorf("stripe_secret_key declared with wrong shape: %+v (want type=string secret=true)", got)
 	}
 }
 
