@@ -1,0 +1,26 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: ensure-customer
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: ensure_customer
+  description: |
+    Ensure a Stripe Customer exists. Collapses pre-v2 create_customer +
+    update_customer behind one canonical operation: when customer_id is
+    provided the call patches; otherwise creates. Idempotency key defaults
+    to "create_customer_" + email when not provided.
+  inputs:
+    customer_id: { type: string, description: "When set, follows the PATCH (update) path." }
+    email: { type: string }
+    name: { type: string }
+    phone: { type: string }
+    metadata: { type: object }
+    stripe_account: { type: string }
+    idempotency_key: { type: string }
+  outputs:
+    customer_id: { type: string }
+    email: { type: string }
+    created: { type: integer }
+    updated: { type: boolean }

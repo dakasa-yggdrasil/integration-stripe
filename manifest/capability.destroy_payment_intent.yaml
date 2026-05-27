@@ -1,15 +1,17 @@
 apiVersion: yggdrasil.io/v1alpha1
 kind: capability
 metadata:
-  name: cancel-payment-intent
+  name: destroy-payment-intent
   namespace: global
 spec:
   type_ref: { namespace: global, name: stripe }
-  operation: cancel_payment_intent
+  operation: destroy_payment_intent
   description: |
-    Cancel a PaymentIntent. Safe to call on already-canceled.
+    Destroy (cancel) a Stripe PaymentIntent. POST /v1/payment_intents/{id}/cancel.
+    404 → already-absent success.
   inputs:
-    payment_intent_id: { type: string, required: true }
+    payment_intent_id: { type: string }
+    ref: { type: string, description: "SDK canonical Destroy alias for payment_intent_id." }
     cancellation_reason:
       type: string
       enum: ["duplicate", "fraudulent", "requested_by_customer", "abandoned"]

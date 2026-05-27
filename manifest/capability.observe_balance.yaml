@@ -1,0 +1,17 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: observe-balance
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: observe_balance
+  description: |
+    Observe the Stripe account balance. GET /v1/balance — returns available
+    and pending arrays per currency. The Balance object is a singleton per
+    account (no list endpoint).
+  inputs:
+    stripe_account: { type: string }
+  outputs:
+    available: { type: array }
+    pending: { type: array }

@@ -1,24 +1,26 @@
 apiVersion: yggdrasil.io/v1alpha1
 kind: capability
 metadata:
-  name: create-subscription
+  name: ensure-subscription
   namespace: global
 spec:
   type_ref: { namespace: global, name: stripe }
-  operation: create_subscription
+  operation: ensure_subscription
   description: |
-    Create a Stripe Subscription. Defaults payment_behavior to
-    default_incomplete to support SCA.
+    Ensure a Stripe Subscription exists. When subscription_id is provided
+    the call PATCHes the existing subscription; otherwise POST creates a
+    new one. Defaults payment_behavior to default_incomplete (SCA-friendly).
   inputs:
-    customer: { type: string, required: true }
+    subscription_id: { type: string, description: "When set, follows the PATCH (update) path." }
+    customer: { type: string }
     items:
       type: array
-      required: true
       items: { type: object }
     payment_behavior:
       type: string
       default: default_incomplete
     trial_end: { type: integer, description: "Unix timestamp." }
+    cancel_at_period_end: { type: boolean }
     metadata: { type: object }
     stripe_account: { type: string }
     idempotency_key: { type: string }
@@ -26,3 +28,5 @@ spec:
     subscription_id: { type: string }
     status: { type: string }
     latest_invoice: { type: string }
+    cancel_at_period_end: { type: boolean }
+    canceled_at: { type: integer }
