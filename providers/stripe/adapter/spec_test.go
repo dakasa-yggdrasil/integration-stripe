@@ -20,16 +20,16 @@ func TestSpec_ProviderAndVersion(t *testing.T) {
 	require.Equal(t, "2024-12-18.acacia", StripeAPIVersion)
 }
 
-func TestSpec_Describe_HasFourteenCapabilities(t *testing.T) {
+func TestSpec_Describe_HasV2Capabilities(t *testing.T) {
 	resp := Describe()
 	require.Equal(t, "stripe", resp.Provider)
-	// 13 execute + 1 reactor = 14 total in ActionCatalog.
-	require.Len(t, resp.ActionCatalog, 14, "expected 14 actions in catalog")
+	// 19 execute + 1 reactor = 20 total in ActionCatalog.
+	require.Len(t, resp.ActionCatalog, 20, "expected 20 actions in catalog")
 	// SupportedExecuteOperations excludes the reactor.
-	require.Len(t, SupportedExecuteOperations, 13, "expected 13 executable ops")
+	require.Len(t, SupportedExecuteOperations, 19, "expected 19 executable ops")
 }
 
-func TestExecute_CreatePaymentIntent(t *testing.T) {
+func TestExecute_EnsurePaymentIntent(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/payment_intents", r.URL.Path)
 		require.Equal(t, "POST", r.Method)
@@ -44,7 +44,7 @@ func TestExecute_CreatePaymentIntent(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationCreatePaymentIntent,
+		Operation:   OperationEnsurePaymentIntent,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input: map[string]any{
 			"amount":   1990,
@@ -56,7 +56,9 @@ func TestExecute_CreatePaymentIntent(t *testing.T) {
 	require.Equal(t, "requires_payment_method", resp.Output["status"])
 }
 
-func TestExecute_ConfirmPaymentIntent(t *testing.T) {
+func TestExecute_EnsurePaymentIntent_WithIDConfirms(t *testing.T) {
+	// ensure_payment_intent with payment_intent_id triggers the confirm
+	// path — collapses pre-v2 confirm_payment_intent into ensure.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/payment_intents/pi_abc/confirm", r.URL.Path)
 		_, _ = w.Write([]byte(`{"id":"pi_abc","status":"requires_action","next_action":{"redirect_to_url":{"url":"https://stripe.com/3ds"}}}`))
@@ -67,7 +69,7 @@ func TestExecute_ConfirmPaymentIntent(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationConfirmPaymentIntent,
+		Operation:   OperationEnsurePaymentIntent,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input:       map[string]any{"payment_intent_id": "pi_abc"},
 	})
@@ -77,7 +79,7 @@ func TestExecute_ConfirmPaymentIntent(t *testing.T) {
 	require.NotNil(t, resp.Output["next_action"])
 }
 
-func TestExecute_CancelPaymentIntent(t *testing.T) {
+func TestExecute_DestroyPaymentIntent(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/payment_intents/pi_abc/cancel", r.URL.Path)
 		require.NotEmpty(t, r.Header.Get("Idempotency-Key"))
@@ -89,7 +91,7 @@ func TestExecute_CancelPaymentIntent(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationCancelPaymentIntent,
+		Operation:   OperationDestroyPaymentIntent,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input: map[string]any{
 			"payment_intent_id":   "pi_abc",
@@ -101,7 +103,7 @@ func TestExecute_CancelPaymentIntent(t *testing.T) {
 	require.Equal(t, "requested_by_customer", resp.Output["cancellation_reason"])
 }
 
-func TestExecute_CreateCustomer(t *testing.T) {
+func TestExecute_EnsureCustomer_Create(t *testing.T) {
 	var seenIdempotencyKey string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/customers", r.URL.Path)
@@ -115,7 +117,7 @@ func TestExecute_CreateCustomer(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationCreateCustomer,
+		Operation:   OperationEnsureCustomer,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input: map[string]any{
 			"email": "host@dakasa.io",
@@ -127,7 +129,7 @@ func TestExecute_CreateCustomer(t *testing.T) {
 	require.Equal(t, "create_customer_host@dakasa.io", seenIdempotencyKey)
 }
 
-func TestExecute_UpdateCustomer(t *testing.T) {
+func TestExecute_EnsureCustomer_Update(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/customers/cus_abc", r.URL.Path)
 		require.Equal(t, "POST", r.Method)
@@ -140,7 +142,7 @@ func TestExecute_UpdateCustomer(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationUpdateCustomer,
+		Operation:   OperationEnsureCustomer,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input: map[string]any{
 			"customer_id": "cus_abc",
@@ -152,7 +154,7 @@ func TestExecute_UpdateCustomer(t *testing.T) {
 	require.Equal(t, true, resp.Output["updated"])
 }
 
-func TestExecute_CreateSubscription(t *testing.T) {
+func TestExecute_EnsureSubscription_Create(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/subscriptions", r.URL.Path)
 		require.Equal(t, "POST", r.Method)
@@ -167,7 +169,7 @@ func TestExecute_CreateSubscription(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationCreateSubscription,
+		Operation:   OperationEnsureSubscription,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input: map[string]any{
 			"customer": "cus_abc",
@@ -181,7 +183,7 @@ func TestExecute_CreateSubscription(t *testing.T) {
 	require.Equal(t, "incomplete", resp.Output["status"])
 }
 
-func TestExecute_CancelSubscription_Immediate(t *testing.T) {
+func TestExecute_DestroySubscription_Immediate(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/subscriptions/sub_abc", r.URL.Path)
 		require.Equal(t, "DELETE", r.Method)
@@ -193,7 +195,7 @@ func TestExecute_CancelSubscription_Immediate(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationCancelSubscription,
+		Operation:   OperationDestroySubscription,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input:       map[string]any{"subscription_id": "sub_abc"},
 	})
@@ -202,7 +204,7 @@ func TestExecute_CancelSubscription_Immediate(t *testing.T) {
 	require.Equal(t, false, resp.Output["cancel_at_period_end"])
 }
 
-func TestExecute_CancelSubscription_AtPeriodEnd(t *testing.T) {
+func TestExecute_DestroySubscription_AtPeriodEnd(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/subscriptions/sub_abc", r.URL.Path)
 		require.Equal(t, "POST", r.Method)
@@ -216,7 +218,7 @@ func TestExecute_CancelSubscription_AtPeriodEnd(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationCancelSubscription,
+		Operation:   OperationDestroySubscription,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input: map[string]any{
 			"subscription_id":      "sub_abc",
@@ -277,7 +279,7 @@ func TestExecute_CreateSetupIntent(t *testing.T) {
 	require.Equal(t, "seti_secret", resp.Output["client_secret"])
 }
 
-func TestExecute_ListCharges(t *testing.T) {
+func TestExecute_ObserveCharges(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/charges", r.URL.Path)
 		require.Equal(t, "GET", r.Method)
@@ -294,7 +296,7 @@ func TestExecute_ListCharges(t *testing.T) {
 	defer restore()
 
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   OperationListCharges,
+		Operation:   OperationObserveCharges,
 		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
 		Input: map[string]any{
 			"customer": "cus_abc",
@@ -302,9 +304,9 @@ func TestExecute_ListCharges(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	charges, ok := resp.Output["charges"].([]map[string]any)
+	items, ok := resp.Output["items"].([]map[string]any)
 	require.True(t, ok)
-	require.Len(t, charges, 2)
+	require.Len(t, items, 2)
 	require.Equal(t, false, resp.Output["has_more"])
 }
 
@@ -419,3 +421,27 @@ func TestExecute_VerifyWebhookSignature(t *testing.T) {
 // silence unused json import (used by verify_webhook_signature impl) when tests
 // elsewhere don't reach json.Marshal.
 var _ = json.Marshal
+
+// actionNames returns a set of catalog entry names for v2.0.0 assertions.
+func actionNames(desc contract.AdapterDescribeResponse) map[string]bool {
+	out := map[string]bool{}
+	for _, a := range desc.ActionCatalog {
+		out[a.Name] = true
+	}
+	return out
+}
+
+func TestSpec_PaymentIntentTriple(t *testing.T) {
+	desc := Describe()
+	names := actionNames(desc)
+	for _, want := range []string{"ensure_payment_intent", "observe_payment_intents", "destroy_payment_intent"} {
+		if !names[want] {
+			t.Errorf("expected %q present", want)
+		}
+	}
+	for _, drop := range []string{"create_payment_intent", "confirm_payment_intent", "cancel_payment_intent"} {
+		if names[drop] {
+			t.Errorf("expected %q removed", drop)
+		}
+	}
+}
