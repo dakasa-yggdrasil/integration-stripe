@@ -1,0 +1,14 @@
+# Built binaries
+/adapter
+/integration-stripe
+
+# Test artifacts
+*.test
+/coverage.out
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
