@@ -445,3 +445,132 @@ func TestSpec_PaymentIntentTriple(t *testing.T) {
 		}
 	}
 }
+
+func TestSpec_CustomerTriple(t *testing.T) {
+	desc := Describe()
+	names := actionNames(desc)
+	for _, want := range []string{"ensure_customer", "observe_customers", "destroy_customer"} {
+		if !names[want] {
+			t.Errorf("expected %q present", want)
+		}
+	}
+	for _, drop := range []string{"create_customer", "update_customer"} {
+		if names[drop] {
+			t.Errorf("expected %q removed", drop)
+		}
+	}
+}
+
+func TestSpec_SubscriptionTriple(t *testing.T) {
+	desc := Describe()
+	names := actionNames(desc)
+	for _, want := range []string{"ensure_subscription", "observe_subscriptions", "destroy_subscription"} {
+		if !names[want] {
+			t.Errorf("expected %q present", want)
+		}
+	}
+	for _, drop := range []string{"create_subscription", "cancel_subscription"} {
+		if names[drop] {
+			t.Errorf("expected %q removed", drop)
+		}
+	}
+}
+
+func TestSpec_StripeWebhookEndpointTriple(t *testing.T) {
+	desc := Describe()
+	names := actionNames(desc)
+	for _, want := range []string{"ensure_webhook_endpoint", "observe_webhook_endpoints", "destroy_webhook_endpoint"} {
+		if !names[want] {
+			t.Errorf("expected %q present", want)
+		}
+	}
+}
+
+func TestSpec_StripeWebhookEndpointResourceType(t *testing.T) {
+	desc := Describe()
+	for _, rt := range desc.ResourceTypes {
+		if rt.Name == "webhook_endpoint" {
+			want := []string{"ensure_webhook_endpoint", "observe_webhook_endpoints", "destroy_webhook_endpoint"}
+			if len(rt.DefaultActions) < 3 {
+				t.Fatalf("expected at least 3 DefaultActions, got %v", rt.DefaultActions)
+			}
+			for i, w := range want {
+				if rt.DefaultActions[i] != w {
+					t.Errorf("expected DefaultActions[%d]=%q, got %q", i, w, rt.DefaultActions[i])
+				}
+			}
+			return
+		}
+	}
+	t.Fatal("webhook_endpoint resource_type missing")
+}
+
+func TestSpec_StripeObserveCharges(t *testing.T) {
+	desc := Describe()
+	names := actionNames(desc)
+	if !names["observe_charges"] {
+		t.Error("expected observe_charges")
+	}
+	if names["list_charges"] {
+		t.Error("list_charges must be renamed")
+	}
+}
+
+func TestSpec_StripeObserveBalance(t *testing.T) {
+	desc := Describe()
+	names := actionNames(desc)
+	if !names["observe_balance"] {
+		t.Error("expected observe_balance")
+	}
+}
+
+func TestSpec_StripeCreateRefundOnAllowlist(t *testing.T) {
+	desc := Describe()
+	names := actionNames(desc)
+	// create_refund stays — money-movement action per spec §11.3.
+	if !names["create_refund"] {
+		t.Error("create_refund must remain (allowlisted action)")
+	}
+}
+
+// TestSpec_LegacyOperationsRouteThroughCompat verifies the per-adapter
+// ResolveOperation compat shim translates pre-v2 names to canonical
+// ones during the v0.5.x migration window.
+func TestSpec_LegacyOperationsRouteThroughCompat(t *testing.T) {
+	cases := map[string]string{
+		"create_payment_intent":   OperationEnsurePaymentIntent,
+		"confirm_payment_intent":  OperationEnsurePaymentIntent,
+		"cancel_payment_intent":   OperationDestroyPaymentIntent,
+		"retrieve_payment_intent": OperationObservePaymentIntents,
+		"create_customer":         OperationEnsureCustomer,
+		"update_customer":         OperationEnsureCustomer,
+		"list_customers":          OperationObserveCustomers,
+		"create_subscription":     OperationEnsureSubscription,
+		"update_subscription":     OperationEnsureSubscription,
+		"cancel_subscription":     OperationDestroySubscription,
+		"list_subscriptions":      OperationObserveSubscriptions,
+		"list_charges":            OperationObserveCharges,
+		"create_webhook_endpoint": OperationEnsureWebhookEndpoint,
+		"update_webhook_endpoint": OperationEnsureWebhookEndpoint,
+		"delete_webhook_endpoint": OperationDestroyWebhookEndpoint,
+		"list_webhook_endpoints":  OperationObserveWebhookEndpoints,
+		"retrieve_balance":        OperationObserveBalance,
+	}
+	for legacy, want := range cases {
+		got, isLegacy := ResolveOperation(legacy)
+		if !isLegacy {
+			t.Errorf("ResolveOperation(%q): expected isLegacy=true", legacy)
+		}
+		if got != want {
+			t.Errorf("ResolveOperation(%q) = %q, want %q", legacy, got, want)
+		}
+	}
+	// Non-legacy passes through.
+	got, isLegacy := ResolveOperation(OperationEnsureCustomer)
+	if isLegacy {
+		t.Errorf("canonical name %q should not be legacy", OperationEnsureCustomer)
+	}
+	if got != OperationEnsureCustomer {
+		t.Errorf("canonical name should pass through unchanged, got %q", got)
+	}
+}
