@@ -80,6 +80,24 @@ func (r *paymentIntentReconciler) Destroy(ctx context.Context, ref string) error
 	return err
 }
 
+// DestroyWithDesired opts into SDK v0.8.0's env-aware destroy path so
+// destroy_payment_intent sees the reserved bridge keys
+// (__instance_credentials etc) the controllers/message bridge stashes
+// for buildExecuteRequest to rehydrate the per-request integration
+// context. Without this method, every destroy_* routed through
+// reconcile.Dispatch silently drops credentials and fails at
+// clientForInstance with "stripe api key is required".
+func (r *paymentIntentReconciler) DestroyWithDesired(ctx context.Context, ref string, desired reconcilePayload) error {
+	if desired == nil {
+		desired = reconcilePayload{}
+	}
+	if _, present := desired["payment_intent_id"]; !present {
+		desired["payment_intent_id"] = ref
+	}
+	_, err := r.dispatch(OperationDestroyPaymentIntent, desired)
+	return err
+}
+
 func (r *paymentIntentReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
 	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
@@ -109,6 +127,19 @@ func (r *customerReconciler) Observe(ctx context.Context, filter map[string]any)
 
 func (r *customerReconciler) Destroy(ctx context.Context, ref string) error {
 	_, err := r.dispatch(OperationDestroyCustomer, reconcilePayload{"customer_id": ref})
+	return err
+}
+
+// DestroyWithDesired — see paymentIntentReconciler.DestroyWithDesired
+// for the full rationale.
+func (r *customerReconciler) DestroyWithDesired(ctx context.Context, ref string, desired reconcilePayload) error {
+	if desired == nil {
+		desired = reconcilePayload{}
+	}
+	if _, present := desired["customer_id"]; !present {
+		desired["customer_id"] = ref
+	}
+	_, err := r.dispatch(OperationDestroyCustomer, desired)
 	return err
 }
 
@@ -144,6 +175,19 @@ func (r *subscriptionReconciler) Destroy(ctx context.Context, ref string) error 
 	return err
 }
 
+// DestroyWithDesired — see paymentIntentReconciler.DestroyWithDesired
+// for the full rationale.
+func (r *subscriptionReconciler) DestroyWithDesired(ctx context.Context, ref string, desired reconcilePayload) error {
+	if desired == nil {
+		desired = reconcilePayload{}
+	}
+	if _, present := desired["subscription_id"]; !present {
+		desired["subscription_id"] = ref
+	}
+	_, err := r.dispatch(OperationDestroySubscription, desired)
+	return err
+}
+
 func (r *subscriptionReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
 	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
@@ -173,6 +217,19 @@ func (r *webhookEndpointReconciler) Observe(ctx context.Context, filter map[stri
 
 func (r *webhookEndpointReconciler) Destroy(ctx context.Context, ref string) error {
 	_, err := r.dispatch(OperationDestroyWebhookEndpoint, reconcilePayload{"id": ref})
+	return err
+}
+
+// DestroyWithDesired — see paymentIntentReconciler.DestroyWithDesired
+// for the full rationale.
+func (r *webhookEndpointReconciler) DestroyWithDesired(ctx context.Context, ref string, desired reconcilePayload) error {
+	if desired == nil {
+		desired = reconcilePayload{}
+	}
+	if _, present := desired["id"]; !present {
+		desired["id"] = ref
+	}
+	_, err := r.dispatch(OperationDestroyWebhookEndpoint, desired)
 	return err
 }
 

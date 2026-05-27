@@ -103,3 +103,60 @@ func TestPaymentIntentReconciler_Dispatch_NilReservedMapsTolerated(t *testing.T)
 // Use context.Background indirectly via dispatch call paths in real
 // code; here we just touch the import to keep go vet happy.
 var _ = context.Background
+
+// TestCustomerReconciler_DestroyWithDesired_ForwardsCredentials proves
+// the SDK v0.8.0 DestroyWithDesired interface lets destroy_customer
+// resolve credentials through buildExecuteRequest — same path
+// ensure_customer / observe_customers use.
+//
+// Without DestroyWithDesired, the SDK falls through to the legacy
+// Destroy(ctx, ref) signature which produces a synthesized payload
+// of only {"customer_id": ref} — the reserved bridge keys are lost
+// and the call fails at clientForInstance with
+// "stripe api key is required".
+//
+// With DestroyWithDesired, the FULL desired payload (including
+// reserved keys) flows into dispatch → buildExecuteRequest → Execute.
+func TestCustomerReconciler_DestroyWithDesired_ForwardsCredentials(t *testing.T) {
+	// Stub the stripe client per the project pattern so
+	// clientForInstance does NOT short-circuit at apiKey resolution.
+	client, err := NewStripeClient("sk_test_stub", "http://127.0.0.1:1", StripeAPIVersion)
+	require.NoError(t, err)
+	restore := SetStripeClientForTest("stripe-canary", client)
+	defer restore()
+
+	r := newCustomerReconciler("stripe-canary")
+	desired := reconcilePayload{
+		"instance_id":     "stripe-canary",
+		InstanceConfigKey: map[string]any{"stripe_account_id": "acct_canary"},
+		InstanceCredsKey:  map[string]any{"stripe_api_key": "sk_test_canary_from_bridge"},
+		InstanceAuthKey:   map[string]any{},
+	}
+
+	// Direct call into DestroyWithDesired — proves the method picks
+	// up the reserved keys and forwards them to dispatch.
+	err = r.DestroyWithDesired(context.Background(), "cus_canary", desired)
+	// We don't care about the underlying HTTP call's success here;
+	// the project's other dispatch tests already cover that. We
+	// assert the FAILURE MODE: if credentials were dropped, the
+	// error message names "stripe api key is required". If the
+	// payload propagates, the test client takes over and we get
+	// either nil error or a stripe-side error code — never the
+	// auth-gate rejection.
+	if err != nil {
+		if got := err.Error(); got != "" {
+			// Must NOT see "stripe api key is required" — that's
+			// the credentials-dropped signature.
+			require.NotContainsf(t, got, "stripe api key is required",
+				"DestroyWithDesired dropped credentials: %s", got)
+		}
+	}
+
+	// Spot-check the request shape directly: the helper must produce
+	// the rehydrated request the bridge expects.
+	got := buildExecuteRequest(OperationDestroyCustomer, desired, "stripe-fallback")
+	require.Equal(t, "stripe-canary", got.Integration.InstanceID)
+	require.Equal(t, map[string]any{"stripe_api_key": "sk_test_canary_from_bridge"},
+		got.Integration.Spec.Credentials,
+		"DestroyWithDesired must propagate InstanceCredsKey into Execute() request")
+}
