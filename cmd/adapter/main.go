@@ -43,9 +43,18 @@ func main() {
 		Version:         ad.AdapterVersion,
 		DefaultTimeout:  30 * time.Second,
 		Concurrency:     5,
-	}).
-		Register("describe", message.DescribeHandler(logger)).
-		Register("execute", message.ExecuteHandler(logger, instances))
+	})
+
+	// Wire SDK reconcile dispatch table BEFORE the legacy "execute"
+	// Register call so the ExecuteHandler can delegate operation
+	// routing to reconcile.Dispatch, activating §6.5 mutation event
+	// auto-emission for production traffic (not just tests).
+	// adapter.Adapter.Register is last-write-wins — keeping the
+	// bridge handler installed below as the single execute owner.
+	ad.WireReconcilers(a, defaultInstanceID(instances))
+
+	a.Register("describe", message.DescribeHandler(logger)).
+		Register("execute", message.ExecuteHandler(logger, a, instances))
 
 	rpcAddr := ":" + envOrDefault("ADAPTER_PORT", "8081")
 	a.ListenHTTP(rpcAddr)
@@ -99,4 +108,23 @@ func envOrDefault(name, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// defaultInstanceID picks a stable fallback InstanceID for the
+// reconciler registration. Production routing per-request uses the
+// envelope's integration.instance_id (lifted by the ExecuteHandler
+// bridge); this fallback exists only for paths that omit the field
+// (unit tests, smoke probes). Picks the lexicographically-first
+// configured instance, or empty when none are configured.
+func defaultInstanceID(instances map[string]config.InstanceConfig) string {
+	if len(instances) == 0 {
+		return ""
+	}
+	first := ""
+	for id := range instances {
+		if first == "" || id < first {
+			first = id
+		}
+	}
+	return first
 }
