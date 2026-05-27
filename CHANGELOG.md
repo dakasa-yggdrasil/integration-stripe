@@ -5,6 +5,31 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-05-27
+
+### Changed
+
+- **Bumped `yggdrasil-sdk-go` v0.7.0 → v0.8.0**. New SDK ships
+  `DestroyWithDesired[D]` — an opt-in interface that lets reconcilers
+  see the FULL desired payload during destruction (including the
+  reserved bridge keys `__instance_credentials` / `__instance_config`
+  / `__request_auth` per INTEGRATION_CONTRACT.md §5.b).
+- **`paymentIntentReconciler`, `customerReconciler`,
+  `subscriptionReconciler`, `webhookEndpointReconciler` implement
+  `DestroyWithDesired`**. The new method merges the inbound ref into
+  the desired payload the SDK forwards (so `payment_intent_id` /
+  `customer_id` / `subscription_id` / `id` is present for handlers),
+  then routes through the existing `dispatch()` →
+  `buildExecuteRequest()` → `Execute()` chain that ensure_* / observe_*
+  already use. Credentials reach destroy_* handlers identically to
+  ensure_* / observe_*.
+
+### Tests
+
+- New `TestCustomerReconciler_DestroyWithDesired_ForwardsCredentials`
+  proves the SDK v0.8.0 + DestroyWithDesired combination propagates
+  `InstanceCredsKey` through the dispatch helper into Execute().
+
 ## [2.2.4] — 2026-05-27
 
 ### Fixed
