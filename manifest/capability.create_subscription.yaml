@@ -1,0 +1,28 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: create-subscription
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: create_subscription
+  description: |
+    Create a Stripe Subscription. Defaults payment_behavior to
+    default_incomplete to support SCA.
+  inputs:
+    customer: { type: string, required: true }
+    items:
+      type: array
+      required: true
+      items: { type: object }
+    payment_behavior:
+      type: string
+      default: default_incomplete
+    trial_end: { type: integer, description: "Unix timestamp." }
+    metadata: { type: object }
+    stripe_account: { type: string }
+    idempotency_key: { type: string }
+  outputs:
+    subscription_id: { type: string }
+    status: { type: string }
+    latest_invoice: { type: string }

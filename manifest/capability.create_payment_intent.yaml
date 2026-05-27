@@ -1,0 +1,47 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: create-payment-intent
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: create_payment_intent
+  description: |
+    Create a Stripe PaymentIntent for one-time payments.
+    Forwards Stripe-Idempotency-Key derived from input or sha256(amount+currency+customer).
+  inputs:
+    amount:
+      type: integer
+      required: true
+    currency:
+      type: string
+      required: true
+      description: ISO 4217 lowercase ("brl", "usd").
+    customer:
+      type: string
+    payment_method:
+      type: string
+    payment_method_types:
+      type: array
+      items: { type: string }
+      default: ["card"]
+    capture_method:
+      type: string
+      default: automatic
+    confirm:
+      type: boolean
+      default: false
+    setup_future_usage:
+      type: string
+    metadata:
+      type: object
+    stripe_account:
+      type: string
+    idempotency_key:
+      type: string
+  outputs:
+    payment_intent_id: { type: string }
+    client_secret: { type: string }
+    status: { type: string }
+    amount: { type: integer }
+    currency: { type: string }

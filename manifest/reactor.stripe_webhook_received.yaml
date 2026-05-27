@@ -1,0 +1,21 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: stripe-webhook-received
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: stripe_webhook_received
+  category: reactor
+  description: |
+    Inbound Stripe webhook delivery at POST /webhooks/stripe/{instance_id}.
+    Framework-invoked; NOT dispatchable via execute.
+    HMAC-SHA256 verified; payload routed via eventTypeToRTAKey().
+  inputs: {}
+  outputs:
+    routing_key: { type: string }
+    instance_id: { type: string }
+    stripe_event_id: { type: string }
+    event_type: { type: string }
+    livemode: { type: boolean }
+    payload: { type: object }

@@ -1,0 +1,29 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: manage-connect-account
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: manage_connect_account
+  description: |
+    Create, retrieve, or update a Stripe Connect Express/Custom account.
+    Phase 1: create / get / update.
+  inputs:
+    operation:
+      type: string
+      required: true
+      enum: ["create", "get", "update"]
+    account_id: { type: string, description: "Required for get/update." }
+    type: { type: string, default: express }
+    country: { type: string, default: BR }
+    email: { type: string }
+    capabilities: { type: array }
+    metadata: { type: object }
+  outputs:
+    account_id: { type: string }
+    type: { type: string }
+    country: { type: string }
+    charges_enabled: { type: boolean }
+    payouts_enabled: { type: boolean }
+    details_submitted: { type: boolean }
