@@ -20,6 +20,42 @@ import (
 // convention; both paths reach the same handlers.
 type reconcilePayload map[string]any
 
+// Reserved payload keys used by the providers/stripe/message bridge
+// to forward integration context (instance_spec.config /
+// instance_spec.credentials) and per-request auth through the SDK
+// reconcile envelope into the per-resource dispatch helpers. The SDK
+// only knows about input JSON — so the bridge stashes the integration
+// context here, and dispatch lifts these back onto a full
+// AdapterExecuteIntegrationRequest before invoking Execute().
+//
+// The "__" prefix prevents collision with operator-supplied input
+// fields (no convention allows leading-underscore field names). The
+// dispatch helpers strip these keys from the forwarded payload before
+// handing it to Execute() so handlers never see the reserved data
+// inside req.Input.
+//
+// Fixes the cycle-#243 bridge-side regression where the bridge dropped
+// instance_spec / req.Auth on the SDK-reconciler-routed path. Mirrors
+// the canonical fix in integration-github v2.4.1.
+//
+// NOTE (DONE_WITH_CONCERNS, 2026-05-27): integration-stripe ALSO
+// carries a pre-existing structural bug independent of this fix —
+// adapter.Execute calls clientForInstance(InstanceID, "", "", ...)
+// with an empty apiKey unconditionally and never reads
+// req.Integration.InstanceSpec.Credentials["stripe_api_key"]. The
+// instances map loaded by cmd/adapter/main.go::config.LoadInstances
+// is captured by message.ExecuteHandler but never threaded into
+// clientForInstance, so in production NewStripeClient("") returns
+// "stripe api key is required" and writes fail regardless of whether
+// the bridge forwards credentials. The bridge fix here is necessary
+// but not sufficient; the secondary Execute()/clientForInstance bug
+// needs a separate cycle.
+const (
+	InstanceConfigKey = "__instance_config"
+	InstanceCredsKey  = "__instance_credentials"
+	InstanceAuthKey   = "__request_auth"
+)
+
 // paymentIntentReconciler wraps Execute() to implement
 // reconcile.Reconciler[D, O] for Stripe PaymentIntents.
 type paymentIntentReconciler struct {
@@ -48,11 +84,7 @@ func (r *paymentIntentReconciler) Destroy(ctx context.Context, ref string) error
 }
 
 func (r *paymentIntentReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
-	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   op,
-		Integration: contract.IntegrationContext{InstanceID: instanceFromPayload(in, r.instanceID)},
-		Input:       in,
-	})
+	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
 		return nil, err
 	}
@@ -84,11 +116,7 @@ func (r *customerReconciler) Destroy(ctx context.Context, ref string) error {
 }
 
 func (r *customerReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
-	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   op,
-		Integration: contract.IntegrationContext{InstanceID: instanceFromPayload(in, r.instanceID)},
-		Input:       in,
-	})
+	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
 		return nil, err
 	}
@@ -120,11 +148,7 @@ func (r *subscriptionReconciler) Destroy(ctx context.Context, ref string) error 
 }
 
 func (r *subscriptionReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
-	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   op,
-		Integration: contract.IntegrationContext{InstanceID: instanceFromPayload(in, r.instanceID)},
-		Input:       in,
-	})
+	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
 		return nil, err
 	}
@@ -156,15 +180,71 @@ func (r *webhookEndpointReconciler) Destroy(ctx context.Context, ref string) err
 }
 
 func (r *webhookEndpointReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
-	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
-		Operation:   op,
-		Integration: contract.IntegrationContext{InstanceID: instanceFromPayload(in, r.instanceID)},
-		Input:       in,
-	})
+	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
 		return nil, err
 	}
 	return reconcilePayload(resp.Output), nil
+}
+
+// buildExecuteRequest rebuilds a full AdapterExecuteIntegrationRequest from
+// the reconcile-layer payload, restoring the instance_spec and request auth
+// that the bridge stashed under reserved keys (InstanceConfigKey /
+// InstanceCredsKey / InstanceAuthKey). Without this rehydration Execute()
+// receives empty InstanceSpec + Auth, which (combined with the secondary
+// pre-existing bug in adapter.Execute / clientForInstance — see package
+// docstring) surfaces as "stripe api key is required". Shared across all
+// per-resource reconcilers so the wire shape is uniform.
+func buildExecuteRequest(op string, in reconcilePayload, fallbackInstanceID string) contract.AdapterExecuteIntegrationRequest {
+	instanceConfig := extractInstanceMap(in, InstanceConfigKey)
+	instanceCredentials := extractInstanceMap(in, InstanceCredsKey)
+	requestAuth := extractInstanceMap(in, InstanceAuthKey)
+	forwardedInput := stripReservedKeys(in)
+	return contract.AdapterExecuteIntegrationRequest{
+		Operation: op,
+		Input:     forwardedInput,
+		Auth:      requestAuth,
+		Integration: contract.IntegrationContext{
+			InstanceID: instanceFromPayload(in, fallbackInstanceID),
+			Spec: contract.IntegrationInstanceManifestSpec{
+				Config:      instanceConfig,
+				Credentials: instanceCredentials,
+			},
+		},
+	}
+}
+
+// extractInstanceMap pulls one of the reserved bridge-forwarded fields off
+// the reconcile payload. Returns nil when absent — Execute() handles nil
+// maps the same as empty.
+func extractInstanceMap(in reconcilePayload, key string) map[string]any {
+	if in == nil {
+		return nil
+	}
+	if v, ok := in[key]; ok {
+		if m, ok := v.(map[string]any); ok {
+			return m
+		}
+	}
+	return nil
+}
+
+// stripReservedKeys returns a copy of in with the bridge-reserved keys
+// removed so handlers only see operator-supplied fields. Returns nil on
+// nil input to preserve the existing Execute() nil-input contract.
+func stripReservedKeys(in reconcilePayload) map[string]any {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		switch k {
+		case InstanceConfigKey, InstanceCredsKey, InstanceAuthKey:
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // instanceFromPayload pulls the instance_id off a reconcilePayload (the

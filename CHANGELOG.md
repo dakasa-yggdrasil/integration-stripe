@@ -5,6 +5,61 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] — 2026-05-27
+
+### Fixed
+
+- **Bridge credentials forwarding (necessary but NOT sufficient)**: the
+  `providers/stripe/message/execute.go::buildSDKDelivery` bridge was
+  dropping `instance_spec.config` / `instance_spec.credentials` /
+  `req.Auth` when re-marshalling inbound envelopes into the SDK-shaped
+  reconcile envelope. Per-resource dispatch helpers
+  (`paymentIntentReconciler.dispatch`, `customerReconciler.dispatch`,
+  `subscriptionReconciler.dispatch`, `webhookEndpointReconciler.dispatch`)
+  then synthesized empty-Spec/Auth requests into `Execute()`. Same root
+  cause as integration-github cycle #243 (`892811e` / `eb49c75` fix). Fix
+  mirrors the canonical pattern: bridge stashes the three context maps
+  under reserved keys (`InstanceConfigKey` / `InstanceCredsKey` /
+  `InstanceAuthKey`, `"__instance_config"` / `"__instance_credentials"`
+  / `"__request_auth"`), shared `buildExecuteRequest` helper rehydrates
+  them into `AdapterExecuteIntegrationRequest` before each dispatch
+  Execute() call, and reserved keys are stripped from forwarded Input
+  so handlers only see operator-supplied fields.
+
+### Known issue — DEFERRED to a follow-up cycle (DONE_WITH_CONCERNS)
+
+- `adapter.Execute` / `clientForInstance` carry a **pre-existing
+  structural bug** independent of the bridge fix above:
+  `clientForInstance(req.Integration.InstanceID, "", "", StripeAPIVersion)`
+  passes an empty `apiKey` unconditionally, and the per-instance
+  `config.LoadInstances` map captured by `cmd/adapter/main.go` is held
+  by `message.ExecuteHandler` as `_ = instances` (line 27 comment claims
+  "per-instance config consumed inside adapter.Execute via
+  clientForInstance" but no such wiring exists). In production
+  `NewStripeClient("")` returns `"stripe api key is required"` and ALL
+  stripe writes fail regardless of bridge state. The bridge fix shipped
+  in this release is necessary (the secondary bug fix will need
+  `req.Integration.Spec.Credentials["stripe_api_key"]` to reach
+  `Execute()` to work), but not sufficient. Follow-up cycle should wire
+  `instances` map through to `clientForInstance` or refactor
+  `clientForInstance` to read from the synthesized
+  `AdapterExecuteIntegrationRequest.Integration.Spec.Credentials`.
+
+### Tests
+
+- `TestPaymentIntentReconciler_Dispatch_ForwardsInstanceCredentials`,
+  `TestPaymentIntentReconciler_Dispatch_FallbackInstanceID`,
+  `TestPaymentIntentReconciler_Dispatch_NilReservedMapsTolerated`
+  (`providers/stripe/adapter/reconcile_dispatch_test.go`) — assert the
+  in-tree `buildExecuteRequest` helper rehydrates instance_spec +
+  req.Auth from the reserved-key forwarded payload, falls back to the
+  reconciler-bound instance_id when the payload carries no override,
+  and tolerates nil reserved maps without panic.
+
+### Changed
+
+- `AdapterVersion` bumped 2.2.0 → 2.2.1 (patch — no API surface change).
+
 ## [2.2.0] — 2026-05-27
 
 ### Changed
