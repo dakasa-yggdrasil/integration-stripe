@@ -64,3 +64,23 @@ func TestVerifyStripe_FutureTimestamp(t *testing.T) {
 	_, err := VerifySignature(payload, header, secret, 300)
 	require.ErrorIs(t, err, ErrSignatureExpired)
 }
+
+func TestVerifyStripe_MissingT(t *testing.T) {
+	_, err := VerifySignature([]byte("body"), "v1=deadbeef", []byte("s"), 300)
+	require.ErrorIs(t, err, ErrSignatureMissingT)
+}
+
+func TestVerifyStripe_MissingV1(t *testing.T) {
+	_, err := VerifySignature([]byte("body"), "t=1700000000", []byte("s"), 300)
+	require.ErrorIs(t, err, ErrSignatureMissingV1)
+}
+
+func TestVerifyStripe_ToleranceZero(t *testing.T) {
+	payload := []byte(`{"id":"evt_4"}`)
+	secret := []byte("whsec_test_005")
+	ts := time.Now().Unix() - 1 // 1s old
+	header := makeStripeSig(payload, secret, ts)
+
+	_, err := VerifySignature(payload, header, secret, 0)
+	require.ErrorIs(t, err, ErrSignatureExpired)
+}
