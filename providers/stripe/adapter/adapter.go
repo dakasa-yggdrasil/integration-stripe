@@ -36,6 +36,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return createPaymentIntent(ctx, client, req)
 	case OperationConfirmPaymentIntent:
 		return confirmPaymentIntent(ctx, client, req)
+	case OperationCancelPaymentIntent:
+		return cancelPaymentIntent(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -113,6 +115,33 @@ func createPaymentIntent(ctx context.Context, c *stripe.Client, req contract.Ada
 			"currency":          pi.Currency,
 		},
 	}, nil
+}
+
+func cancelPaymentIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	id := stringOr(req.Input, "payment_intent_id")
+	if id == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("payment_intent_id required")
+	}
+	params := &stripe.PaymentIntentCancelParams{}
+	if reason := stringOr(req.Input, "cancellation_reason"); reason != "" {
+		params.CancellationReason = stripe.String(reason)
+	}
+	if acc := stringOr(req.Input, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	// Always derive the same key for a given PI so a duplicate cancel
+	// is no-op even if no idempotency_key is passed.
+	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "cancel_pi", id))
+
+	pi, err := c.V1PaymentIntents.Cancel(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"payment_intent_id":   pi.ID,
+		"status":              string(pi.Status),
+		"cancellation_reason": string(pi.CancellationReason),
+	}}, nil
 }
 
 // verifyWebhookSig is implemented in Task 32 (verify_webhook_signature
