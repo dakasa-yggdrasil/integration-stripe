@@ -76,6 +76,30 @@ func TestExecute_ConfirmPaymentIntent(t *testing.T) {
 	require.NotNil(t, resp.Output["next_action"])
 }
 
+func TestExecute_CancelPaymentIntent(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/payment_intents/pi_abc/cancel", r.URL.Path)
+		require.NotEmpty(t, r.Header.Get("Idempotency-Key"))
+		_, _ = w.Write([]byte(`{"id":"pi_abc","status":"canceled","cancellation_reason":"requested_by_customer"}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationCancelPaymentIntent,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"payment_intent_id":   "pi_abc",
+			"cancellation_reason": "requested_by_customer",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "canceled", resp.Output["status"])
+	require.Equal(t, "requested_by_customer", resp.Output["cancellation_reason"])
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now
