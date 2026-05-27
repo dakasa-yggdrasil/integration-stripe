@@ -227,6 +227,31 @@ func TestExecute_CancelSubscription_AtPeriodEnd(t *testing.T) {
 	require.Equal(t, true, resp.Output["cancel_at_period_end"])
 }
 
+func TestExecute_CreateRefund(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/refunds", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		require.NotEmpty(t, r.Header.Get("Idempotency-Key"))
+		_, _ = w.Write([]byte(`{"id":"re_test","status":"succeeded","amount":500,"charge":"ch_abc"}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationCreateRefund,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"charge": "ch_abc",
+			"amount": 500,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "re_test", resp.Output["refund_id"])
+	require.Equal(t, "succeeded", resp.Output["status"])
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now
