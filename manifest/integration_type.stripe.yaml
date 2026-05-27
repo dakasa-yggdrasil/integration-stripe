@@ -19,10 +19,14 @@ spec:
   - describe
   - execute
   credential_schema:
-    mode: env
-    required:
-    - STRIPE_API_KEY
-    - STRIPE_WEBHOOK_SECRET
+    mode: inline
+    properties:
+      stripe_api_key:
+        type: string
+        secret: true
+      stripe_webhook_secret:
+        type: string
+        secret: true
   action_catalog:
   - name: ensure_payment_intent
     category: capability
@@ -219,3 +223,6 @@ spec:
     - manage_connect_account
     - verify_webhook_signature
     - stripe_webhook_received
+  instance_schema:
+    mode: inline
+    properties: {}
