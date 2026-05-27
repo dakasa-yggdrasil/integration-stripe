@@ -1,0 +1,7 @@
+{
+  "id": "evt_pi_failed_01",
+  "object": "event",
+  "type": "payment_intent.payment_failed",
+  "livemode": false,
+  "data": {"object": {"id": "pi_test_02", "amount": 1990, "currency": "brl", "status": "requires_payment_method", "last_payment_error": {"code": "card_declined"}}}
+}

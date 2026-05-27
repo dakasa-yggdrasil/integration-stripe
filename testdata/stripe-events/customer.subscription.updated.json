@@ -1,0 +1,7 @@
+{
+  "id": "evt_sub_updated_01",
+  "object": "event",
+  "type": "customer.subscription.updated",
+  "livemode": false,
+  "data": {"object": {"id": "sub_test_02", "status": "active", "cancel_at_period_end": true}}
+}

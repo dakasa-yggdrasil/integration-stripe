@@ -1,0 +1,7 @@
+{
+  "id": "evt_sub_deleted_01",
+  "object": "event",
+  "type": "customer.subscription.deleted",
+  "livemode": false,
+  "data": {"object": {"id": "sub_test_01", "status": "canceled", "canceled_at": 1735000000}}
+}

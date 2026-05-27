@@ -1,0 +1,7 @@
+{
+  "id": "evt_pi_succeeded_01",
+  "object": "event",
+  "type": "payment_intent.succeeded",
+  "livemode": false,
+  "data": {"object": {"id": "pi_test_01", "amount": 1990, "currency": "brl", "status": "succeeded"}}
+}
