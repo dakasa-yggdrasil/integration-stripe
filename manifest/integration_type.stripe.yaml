@@ -1,0 +1,79 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: integration_type
+metadata:
+  name: stripe
+  namespace: global
+spec:
+  provider: stripe
+  version: 1.0.0
+  adapter:
+    image_repo: ghcr.io/dakasa-yggdrasil/integration-stripe
+    image_tag: v1.0.0
+    transport: http_json
+    endpoints:
+      describe: /rpc/describe
+      execute: /rpc/execute
+    timeout_seconds: 30
+  capabilities:
+    - describe
+    - execute
+  credential_schema:
+    mode: env
+    required: [STRIPE_API_KEY, STRIPE_WEBHOOK_SECRET]
+  action_catalog:
+    - name: create_payment_intent
+      category: capability
+      idempotent: false
+      resource_types: [payment_intent]
+    - name: confirm_payment_intent
+      category: capability
+      idempotent: false
+      resource_types: [payment_intent]
+    - name: cancel_payment_intent
+      category: capability
+      idempotent: true
+      resource_types: [payment_intent]
+    - name: create_customer
+      category: capability
+      idempotent: false
+      resource_types: [customer]
+    - name: update_customer
+      category: capability
+      idempotent: true
+      resource_types: [customer]
+    - name: create_subscription
+      category: capability
+      idempotent: false
+      resource_types: [subscription]
+    - name: cancel_subscription
+      category: capability
+      idempotent: true
+      resource_types: [subscription]
+    - name: create_refund
+      category: capability
+      idempotent: false
+      resource_types: [refund]
+    - name: create_setup_intent
+      category: capability
+      idempotent: false
+      resource_types: [setup_intent]
+    - name: list_charges
+      category: capability
+      idempotent: true
+      resource_types: [charge]
+    - name: create_payout
+      category: capability
+      idempotent: false
+      resource_types: [payout]
+    - name: manage_connect_account
+      category: capability
+      idempotent: true
+      resource_types: [connect_account]
+    - name: verify_webhook_signature
+      category: capability
+      idempotent: true
+      resource_types: [webhook]
+    - name: stripe_webhook_received
+      category: reactor
+      idempotent: true
+      resource_types: [webhook]
