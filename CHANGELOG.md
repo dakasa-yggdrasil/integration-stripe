@@ -5,6 +5,20 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] — 2026-05-27
+
+### Changed
+
+- **Bumped `yggdrasil-sdk-go` v0.8.0 → v0.8.1**. SDK patch fixes
+  destroy resource_id inference for §6.5 mutation events. Pre-v0.8.1
+  stripe destroy events (e.g. `stripe.customer.destroyed`,
+  `stripe.subscription.destroyed`) emitted with empty resource_id
+  because `makeDestroyFn` only extracted ref from `{"ref":...}` while
+  stripe sends `{"customer_id":"cus_..."}`, `{"subscription_id":"sub_..."}`,
+  etc. yggdrasil-core rejected with HTTP 400. After v0.8.1 the SDK
+  infers ref from `<resource>_id`; stripe destroy events now land in
+  `event_log` with the correct id. No adapter source change required.
+
 ## [2.3.0] — 2026-05-27
 
 ### Changed
