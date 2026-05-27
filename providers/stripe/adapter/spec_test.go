@@ -18,7 +18,7 @@ import (
 func TestSpec_ProviderAndVersion(t *testing.T) {
 	require.Equal(t, "stripe", Provider)
 	require.Equal(t, "stripe", IntegrationType)
-	require.Equal(t, "2.2.3", AdapterVersion)
+	require.Equal(t, "2.2.4", AdapterVersion)
 	require.Equal(t, "2024-12-18.acacia", StripeAPIVersion)
 }
 
@@ -574,6 +574,25 @@ func TestSpec_CredentialSchemaDeclaresBothKeyAliases(t *testing.T) {
 	}
 	if !alias.Secret {
 		t.Errorf("stripe_secret_key.Secret = false, want true")
+	}
+}
+
+// TestSpec_InstanceSchemaDeclaresOperatorMetadata pins v2.2.4: the
+// instance_schema declares the operator-injected non-secret metadata
+// fields (base_url / environment / provider) the validation harness
+// (and any real operator-side instance template) carries on
+// integration_instance.spec.config. Without these, yggdrasil-core's
+// instance-config validator rejects the instance during dispatch with
+// `integration config field "<x>" is not declared in the
+// integration_type schema`. The adapter ignores fields it does not
+// consume; the declaration only opens the validator gate.
+func TestSpec_InstanceSchemaDeclaresOperatorMetadata(t *testing.T) {
+	desc := Describe()
+	props := desc.InstanceSchema.Properties
+	for _, want := range []string{"base_url", "environment", "provider"} {
+		if _, ok := props[want]; !ok {
+			t.Errorf("InstanceSchema.Properties missing %q — operator-injected metadata will be rejected by yggdrasil-core's instance validator", want)
+		}
 	}
 }
 

@@ -5,16 +5,16 @@ metadata:
   namespace: global
 spec:
   provider: stripe
-  version: 2.2.3
+  version: 2.2.4
   adapter:
     image_repo: ghcr.io/dakasa-yggdrasil/integration-stripe
-    image_tag: v2.2.3
+    image_tag: v2.2.4
     transport: http_json
     endpoints:
       describe: /rpc/describe
       execute: /rpc/execute
     timeout_seconds: 30
-    version: 2.2.3
+    version: 2.2.4
   capabilities:
   - describe
   - execute
@@ -242,4 +242,30 @@ spec:
     - stripe_webhook_received
   instance_schema:
     mode: inline
-    properties: {}
+    properties:
+      stripe_account_id:
+        type: string
+        description: Optional Stripe Connect account ID; sets Stripe-Account header.
+      stripe_api_version:
+        type: string
+        default: 2024-12-18.acacia
+      stripe_webhook_secret:
+        type: string
+        secret: true
+        description: Stripe webhook endpoint signing secret (whsec_*).
+      webhook_tolerance_seconds:
+        type: integer
+        default: 300
+      # Operator-injected non-secret metadata accepted by the validation
+      # instance. Declared so yggdrasil-core does not reject the config
+      # at validation time. The adapter ignores fields it does not
+      # consume; these stay out of the credential path.
+      base_url:
+        type: string
+        description: Override RPC base URL for the adapter pod (used by the validation harness).
+      environment:
+        type: string
+        description: Free-form environment tag (sandbox/production) for operator filtering.
+      provider:
+        type: string
+        description: Provider-name echo (always "stripe"). Kept for instance ergonomics.
