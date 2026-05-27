@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -552,11 +553,39 @@ func metadataFromInput(in map[string]any) map[string]string {
 	return out
 }
 
-// verifyWebhookSig is implemented in Task 32 (verify_webhook_signature
-// capability). Stub here so Execute can dispatch to it ahead of the
-// implementation landing.
+// verifyWebhookSig implements the standalone verify_webhook_signature
+// capability (spec §3.13). Workflow authors call this when they have a
+// raw Stripe-Signature header + payload and want a yes/no verification
+// + event metadata, separate from the inbound reactor.
 func verifyWebhookSig(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
-	return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("verify_webhook_signature not yet implemented")
+	payload := []byte(stringOr(req.Input, "payload"))
+	header := stringOr(req.Input, "stripe_signature")
+	secret := []byte(stringOr(req.Input, "endpoint_secret"))
+	tol := intFromInput(req.Input, "tolerance_seconds")
+	if tol <= 0 {
+		tol = 300
+	}
+	ts, err := VerifySignature(payload, header, secret, tol)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{
+			Output: map[string]any{"valid": false, "error": err.Error()},
+		}, nil
+	}
+
+	var ev struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal(payload, &ev)
+
+	return contract.AdapterExecuteIntegrationResponse{
+		Output: map[string]any{
+			"valid":      true,
+			"event_id":   ev.ID,
+			"event_type": ev.Type,
+			"timestamp":  ts,
+		},
+	}, nil
 }
 
 // stringOr returns m[key] as a string (or "" when absent or not a
