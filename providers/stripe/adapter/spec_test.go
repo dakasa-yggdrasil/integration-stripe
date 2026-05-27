@@ -181,6 +181,52 @@ func TestExecute_CreateSubscription(t *testing.T) {
 	require.Equal(t, "incomplete", resp.Output["status"])
 }
 
+func TestExecute_CancelSubscription_Immediate(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/subscriptions/sub_abc", r.URL.Path)
+		require.Equal(t, "DELETE", r.Method)
+		_, _ = w.Write([]byte(`{"id":"sub_abc","status":"canceled","cancel_at_period_end":false,"canceled_at":1700000000}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationCancelSubscription,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input:       map[string]any{"subscription_id": "sub_abc"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "canceled", resp.Output["status"])
+	require.Equal(t, false, resp.Output["cancel_at_period_end"])
+}
+
+func TestExecute_CancelSubscription_AtPeriodEnd(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/subscriptions/sub_abc", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		body, _ := io.ReadAll(r.Body)
+		require.Contains(t, string(body), "cancel_at_period_end=true")
+		_, _ = w.Write([]byte(`{"id":"sub_abc","status":"active","cancel_at_period_end":true}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationCancelSubscription,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"subscription_id":      "sub_abc",
+			"cancel_at_period_end": true,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, true, resp.Output["cancel_at_period_end"])
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now
