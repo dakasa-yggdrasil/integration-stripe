@@ -44,6 +44,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return updateCustomer(ctx, client, req)
 	case OperationCreateSubscription:
 		return createSubscription(ctx, client, req)
+	case OperationCancelSubscription:
+		return cancelSubscription(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -283,6 +285,59 @@ func createSubscription(ctx context.Context, c *stripe.Client, req contract.Adap
 		out["latest_invoice"] = sub.LatestInvoice.ID
 	}
 	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
+}
+
+// boolFromInput returns m[key] as a bool, defaulting to false.
+func boolFromInput(m map[string]any, key string) bool {
+	if v, ok := m[key].(bool); ok {
+		return v
+	}
+	return false
+}
+
+func cancelSubscription(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	id := stringOr(in, "subscription_id")
+	if id == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("subscription_id required")
+	}
+	// When cancel_at_period_end=true Stripe expects POST /v1/subscriptions/{id}
+	// (update). The "immediate" path is DELETE /v1/subscriptions/{id}.
+	atPeriodEnd := boolFromInput(in, "cancel_at_period_end")
+	if atPeriodEnd {
+		params := &stripe.SubscriptionUpdateParams{
+			CancelAtPeriodEnd: stripe.Bool(true),
+		}
+		if acc := stringOr(in, "stripe_account"); acc != "" {
+			params.SetStripeAccount(acc)
+		}
+		params.SetIdempotencyKey(idempotencyKeyOrDerived("", "cancel_sub_period_end", id))
+		sub, err := c.V1Subscriptions.Update(ctx, id, params)
+		if err != nil {
+			return contract.AdapterExecuteIntegrationResponse{}, err
+		}
+		return contract.AdapterExecuteIntegrationResponse{Output: subOutput(sub)}, nil
+	}
+
+	params := &stripe.SubscriptionCancelParams{}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "cancel_sub_now", id))
+	sub, err := c.V1Subscriptions.Cancel(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: subOutput(sub)}, nil
+}
+
+func subOutput(sub *stripe.Subscription) map[string]any {
+	return map[string]any{
+		"subscription_id":      sub.ID,
+		"status":               string(sub.Status),
+		"cancel_at_period_end": sub.CancelAtPeriodEnd,
+		"canceled_at":          sub.CanceledAt,
+	}
 }
 
 // metadataFromInput coerces input["metadata"] into a string-keyed
