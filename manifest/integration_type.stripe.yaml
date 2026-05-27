@@ -15,97 +15,206 @@ spec:
       execute: /rpc/execute
     timeout_seconds: 30
   capabilities:
-    - describe
-    - execute
+  - describe
+  - execute
   credential_schema:
     mode: env
-    required: [STRIPE_API_KEY, STRIPE_WEBHOOK_SECRET]
+    required:
+    - STRIPE_API_KEY
+    - STRIPE_WEBHOOK_SECRET
   action_catalog:
-    # payment_intent triple
-    - name: ensure_payment_intent
-      category: capability
-      idempotent: true
-      resource_types: [payment_intent]
-    - name: observe_payment_intents
-      category: capability
-      idempotent: true
-      resource_types: [payment_intent]
-    - name: destroy_payment_intent
-      category: capability
-      idempotent: true
-      resource_types: [payment_intent]
-    # customer triple
-    - name: ensure_customer
-      category: capability
-      idempotent: true
-      resource_types: [customer]
-    - name: observe_customers
-      category: capability
-      idempotent: true
-      resource_types: [customer]
-    - name: destroy_customer
-      category: capability
-      idempotent: true
-      resource_types: [customer]
-    # subscription triple
-    - name: ensure_subscription
-      category: capability
-      idempotent: true
-      resource_types: [subscription]
-    - name: observe_subscriptions
-      category: capability
-      idempotent: true
-      resource_types: [subscription]
-    - name: destroy_subscription
-      category: capability
-      idempotent: true
-      resource_types: [subscription]
-    # charge (read-only) + refund (money-movement, allowlisted)
-    - name: observe_charges
-      category: capability
-      idempotent: true
-      resource_types: [charge]
-    - name: create_refund
-      category: capability
-      idempotent: true
-      resource_types: [refund]
-    # balance (read-only singleton)
-    - name: observe_balance
-      category: capability
-      idempotent: true
-      resource_types: [balance]
-    # webhook_endpoint triple
-    - name: ensure_webhook_endpoint
-      category: capability
-      idempotent: true
-      resource_types: [webhook_endpoint]
-    - name: observe_webhook_endpoints
-      category: capability
-      idempotent: true
-      resource_types: [webhook_endpoint]
-    - name: destroy_webhook_endpoint
-      category: capability
-      idempotent: true
-      resource_types: [webhook_endpoint]
-    # Allowlisted action helpers (kept verbatim from v1.x)
-    - name: create_setup_intent
-      category: capability
-      idempotent: true
-      resource_types: [setup_intent]
-    - name: create_payout
-      category: capability
-      idempotent: true
-      resource_types: [payout]
-    - name: manage_connect_account
-      category: capability
-      idempotent: true
-      resource_types: [connect_account]
-    - name: verify_webhook_signature
-      category: capability
-      idempotent: true
-      resource_types: [webhook_endpoint]
-    # Reactor
-    - name: stripe_webhook_received
-      category: reactor
-      idempotent: true
-      resource_types: [webhook_endpoint]
+  - name: ensure_payment_intent
+    category: capability
+    idempotent: true
+    resource_types:
+    - payment_intent
+  - name: observe_payment_intents
+    category: capability
+    idempotent: true
+    resource_types:
+    - payment_intent
+  - name: destroy_payment_intent
+    category: capability
+    idempotent: true
+    resource_types:
+    - payment_intent
+  - name: ensure_customer
+    category: capability
+    idempotent: true
+    resource_types:
+    - customer
+  - name: observe_customers
+    category: capability
+    idempotent: true
+    resource_types:
+    - customer
+  - name: destroy_customer
+    category: capability
+    idempotent: true
+    resource_types:
+    - customer
+  - name: ensure_subscription
+    category: capability
+    idempotent: true
+    resource_types:
+    - subscription
+  - name: observe_subscriptions
+    category: capability
+    idempotent: true
+    resource_types:
+    - subscription
+  - name: destroy_subscription
+    category: capability
+    idempotent: true
+    resource_types:
+    - subscription
+  - name: observe_charges
+    category: capability
+    idempotent: true
+    resource_types:
+    - charge
+  - name: create_refund
+    category: capability
+    idempotent: true
+    resource_types:
+    - refund
+  - name: observe_balance
+    category: capability
+    idempotent: true
+    resource_types:
+    - balance
+  - name: ensure_webhook_endpoint
+    category: capability
+    idempotent: true
+    resource_types:
+    - webhook_endpoint
+  - name: observe_webhook_endpoints
+    category: capability
+    idempotent: true
+    resource_types:
+    - webhook_endpoint
+  - name: destroy_webhook_endpoint
+    category: capability
+    idempotent: true
+    resource_types:
+    - webhook_endpoint
+  - name: create_setup_intent
+    category: capability
+    idempotent: true
+    resource_types:
+    - setup_intent
+  - name: create_payout
+    category: capability
+    idempotent: true
+    resource_types:
+    - payout
+  - name: manage_connect_account
+    category: capability
+    idempotent: true
+    resource_types:
+    - connect_account
+  - name: verify_webhook_signature
+    category: capability
+    idempotent: true
+    resource_types:
+    - webhook_endpoint
+  - name: stripe_webhook_received
+    category: reactor
+    idempotent: true
+    resource_types:
+    - webhook_endpoint
+  resource_types:
+  - name: payment_intent
+    discoverable: false
+    default_actions:
+    - ensure_payment_intent
+    - observe_payment_intents
+    - destroy_payment_intent
+    canonical_prefix: thirdparty.stripe.payment_intent
+    identity_template: payment_intent.{id}
+  - name: customer
+    discoverable: false
+    default_actions:
+    - ensure_customer
+    - observe_customers
+    canonical_prefix: thirdparty.stripe.customer
+    identity_template: customer.{id}
+  - name: subscription
+    discoverable: false
+    default_actions:
+    - ensure_subscription
+    - observe_subscriptions
+    - destroy_subscription
+    canonical_prefix: thirdparty.stripe.subscription
+    identity_template: subscription.{id}
+  - name: charge
+    discoverable: false
+    default_actions:
+    - observe_charges
+    - create_refund
+    canonical_prefix: thirdparty.stripe.charge
+    identity_template: charge.{id}
+  - name: balance
+    discoverable: false
+    default_actions:
+    - observe_balance
+    canonical_prefix: thirdparty.stripe.balance
+    identity_template: balance.{id}
+  - name: webhook_endpoint
+    discoverable: false
+    default_actions:
+    - ensure_webhook_endpoint
+    - observe_webhook_endpoints
+    - destroy_webhook_endpoint
+    - verify_webhook_signature
+    canonical_prefix: thirdparty.stripe.webhook_endpoint
+    identity_template: webhook_endpoint.{id}
+  - name: setup_intent
+    discoverable: false
+    default_actions:
+    - create_setup_intent
+    canonical_prefix: thirdparty.stripe.setup_intent
+    identity_template: setup_intent.{id}
+  - name: payout
+    discoverable: false
+    default_actions:
+    - create_payout
+    canonical_prefix: thirdparty.stripe.payout
+    identity_template: payout.{id}
+  - name: connect_account
+    discoverable: false
+    default_actions:
+    - manage_connect_account
+    canonical_prefix: thirdparty.stripe.connect_account
+    identity_template: connect_account.{id}
+  discovery:
+    mode: push
+    cursor: none
+  normalization:
+    name_path: metadata.name
+    owner_path: metadata.namespace
+    external_id_path: metadata.name
+    fallback_resource_prefix: thirdparty.stripe.custom
+  execution:
+    supports_dry_run: false
+    idempotent_actions:
+    - ensure_payment_intent
+    - observe_payment_intents
+    - destroy_payment_intent
+    - ensure_customer
+    - observe_customers
+    - destroy_customer
+    - ensure_subscription
+    - observe_subscriptions
+    - destroy_subscription
+    - observe_charges
+    - create_refund
+    - observe_balance
+    - ensure_webhook_endpoint
+    - observe_webhook_endpoints
+    - destroy_webhook_endpoint
+    - create_setup_intent
+    - create_payout
+    - manage_connect_account
+    - verify_webhook_signature
+    - stripe_webhook_received
