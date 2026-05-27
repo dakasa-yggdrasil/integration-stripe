@@ -48,6 +48,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return cancelSubscription(ctx, client, req)
 	case OperationCreateRefund:
 		return createRefund(ctx, client, req)
+	case OperationCreateSetupIntent:
+		return createSetupIntent(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -333,6 +335,42 @@ func createRefund(ctx context.Context, c *stripe.Client, req contract.AdapterExe
 		out["charge"] = r.Charge.ID
 	}
 	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
+}
+
+func createSetupIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	usage := stringOr(in, "usage")
+	if usage == "" {
+		usage = "off_session"
+	}
+	params := &stripe.SetupIntentCreateParams{
+		Usage: stripe.String(usage),
+	}
+	if cust := stringOr(in, "customer"); cust != "" {
+		params.Customer = stripe.String(cust)
+	}
+	if pm := stringOr(in, "payment_method"); pm != "" {
+		params.PaymentMethod = stripe.String(pm)
+	}
+	if md := metadataFromInput(in); len(md) > 0 {
+		params.Metadata = md
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	idk := stringOr(in, "idempotency_key")
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(idk, "create_si",
+		stringOr(in, "customer")))
+
+	si, err := c.V1SetupIntents.Create(ctx, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"setup_intent_id": si.ID,
+		"client_secret":   si.ClientSecret,
+		"status":          string(si.Status),
+	}}, nil
 }
 
 // boolFromInput returns m[key] as a bool, defaulting to false.

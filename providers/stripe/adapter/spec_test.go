@@ -252,6 +252,31 @@ func TestExecute_CreateRefund(t *testing.T) {
 	require.Equal(t, "succeeded", resp.Output["status"])
 }
 
+func TestExecute_CreateSetupIntent(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/setup_intents", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		body, _ := io.ReadAll(r.Body)
+		require.Contains(t, string(body), "usage=off_session")
+		_, _ = w.Write([]byte(`{"id":"seti_test","client_secret":"seti_secret","status":"requires_payment_method"}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationCreateSetupIntent,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"customer": "cus_xyz",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "seti_test", resp.Output["setup_intent_id"])
+	require.Equal(t, "seti_secret", resp.Output["client_secret"])
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now
