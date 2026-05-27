@@ -8,7 +8,9 @@ services:
       - "12111:12111"
       - "12112:12112"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:12111/v1/charges?limit=1"]
+      # stripe-mock requires bearer auth; any sk_test_* string is accepted.
+      # Without the header it returns HTTP 401 and the probe never succeeds.
+      test: ["CMD", "wget", "-qO-", "--header=Authorization: Bearer sk_test_compose", "http://localhost:12111/v1/charges?limit=1"]
       interval: 5s
       timeout: 3s
       retries: 5
