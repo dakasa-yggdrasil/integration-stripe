@@ -14,7 +14,7 @@ import (
 const (
 	Provider        = "stripe"
 	IntegrationType = "stripe"
-	AdapterVersion  = "1.0.0"
+	AdapterVersion  = "2.0.0"
 	// StripeAPIVersion pins the Stripe API version. Bumping requires a
 	// full integration test cycle + adapter version bump. Documented in
 	// README.md and integration_type manifest spec.adapter.version notes.
