@@ -50,6 +50,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return createRefund(ctx, client, req)
 	case OperationCreateSetupIntent:
 		return createSetupIntent(ctx, client, req)
+	case OperationListCharges:
+		return listCharges(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -370,6 +372,67 @@ func createSetupIntent(ctx context.Context, c *stripe.Client, req contract.Adapt
 		"setup_intent_id": si.ID,
 		"client_secret":   si.ClientSecret,
 		"status":          string(si.Status),
+	}}, nil
+}
+
+func listCharges(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	limit := intFromInput(in, "limit")
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	params := &stripe.ChargeListParams{}
+	params.Limit = stripe.Int64(limit)
+	if cust := stringOr(in, "customer"); cust != "" {
+		params.Customer = stripe.String(cust)
+	}
+	if pi := stringOr(in, "payment_intent"); pi != "" {
+		params.PaymentIntent = stripe.String(pi)
+	}
+	if cursor := stringOr(in, "starting_after"); cursor != "" {
+		params.StartingAfter = stripe.String(cursor)
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+
+	out := make([]map[string]any, 0, limit)
+	iter := c.V1Charges.List(ctx, params)
+	count := int64(0)
+	stoppedEarly := false
+	var seqErr error
+	iter(func(charge *stripe.Charge, err error) bool {
+		if err != nil {
+			seqErr = err
+			return false
+		}
+		if charge == nil {
+			return true
+		}
+		if count >= limit {
+			stoppedEarly = true
+			return false
+		}
+		out = append(out, map[string]any{
+			"id":       charge.ID,
+			"amount":   charge.Amount,
+			"currency": charge.Currency,
+			"status":   string(charge.Status),
+		})
+		count++
+		return true
+	})
+	if seqErr != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, seqErr
+	}
+	// stoppedEarly=true means there was at least one more item available
+	// upstream when we hit our cap. Otherwise the upstream is exhausted.
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"charges":  out,
+		"has_more": stoppedEarly,
 	}}, nil
 }
 
