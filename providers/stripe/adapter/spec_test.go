@@ -277,6 +277,37 @@ func TestExecute_CreateSetupIntent(t *testing.T) {
 	require.Equal(t, "seti_secret", resp.Output["client_secret"])
 }
 
+func TestExecute_ListCharges(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/charges", r.URL.Path)
+		require.Equal(t, "GET", r.Method)
+		require.Equal(t, "cus_abc", r.URL.Query().Get("customer"))
+		require.Equal(t, "2", r.URL.Query().Get("limit"))
+		_, _ = w.Write([]byte(`{"object":"list","has_more":false,"data":[
+			{"id":"ch_1","amount":1000,"currency":"brl","status":"succeeded"},
+			{"id":"ch_2","amount":2000,"currency":"brl","status":"succeeded"}
+		]}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationListCharges,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"customer": "cus_abc",
+			"limit":    2,
+		},
+	})
+	require.NoError(t, err)
+	charges, ok := resp.Output["charges"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, charges, 2)
+	require.Equal(t, false, resp.Output["has_more"])
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now
