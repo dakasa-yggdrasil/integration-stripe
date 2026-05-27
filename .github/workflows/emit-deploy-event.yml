@@ -1,0 +1,32 @@
+name: emit-deploy-event
+
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  emit:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify yggdrasil-core of deploy event
+        env:
+          YGGDRASIL_API: ${{ secrets.YGGDRASIL_API_URL }}
+          YGGDRASIL_TOKEN: ${{ secrets.YGGDRASIL_WORKFLOW_RUN_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          curl -fsSL -X POST "${YGGDRASIL_API}/api/v1/workflow-runs/emit" \
+            -H "Authorization: Bearer ${YGGDRASIL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc \
+              --arg repo "$REPO" \
+              --arg sha "$SHA" \
+              --arg run "$RUN_ID" \
+              '{repo:$repo, sha:$sha, run_id:$run, event:"deploy"}')"
