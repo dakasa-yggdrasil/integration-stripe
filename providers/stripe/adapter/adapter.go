@@ -42,6 +42,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return createCustomer(ctx, client, req)
 	case OperationUpdateCustomer:
 		return updateCustomer(ctx, client, req)
+	case OperationCreateSubscription:
+		return createSubscription(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -221,6 +223,66 @@ func updateCustomer(ctx context.Context, c *stripe.Client, req contract.AdapterE
 		"customer_id": cust.ID,
 		"updated":     true,
 	}}, nil
+}
+
+func createSubscription(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	customer := stringOr(in, "customer")
+	if customer == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("customer required")
+	}
+	rawItems, _ := in["items"].([]any)
+	if len(rawItems) == 0 {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("at least one item is required")
+	}
+	items := make([]*stripe.SubscriptionCreateItemParams, 0, len(rawItems))
+	for _, raw := range rawItems {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		item := &stripe.SubscriptionCreateItemParams{}
+		if price := stringOr(entry, "price"); price != "" {
+			item.Price = stripe.String(price)
+		}
+		if qty := intFromInput(entry, "quantity"); qty > 0 {
+			item.Quantity = stripe.Int64(qty)
+		}
+		items = append(items, item)
+	}
+	behavior := stringOr(in, "payment_behavior")
+	if behavior == "" {
+		behavior = "default_incomplete"
+	}
+	params := &stripe.SubscriptionCreateParams{
+		Customer:        stripe.String(customer),
+		Items:           items,
+		PaymentBehavior: stripe.String(behavior),
+	}
+	if trial := intFromInput(in, "trial_end"); trial > 0 {
+		params.TrialEnd = stripe.Int64(trial)
+	}
+	if md := metadataFromInput(in); len(md) > 0 {
+		params.Metadata = md
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	idk := stringOr(in, "idempotency_key")
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(idk, "create_sub", customer))
+
+	sub, err := c.V1Subscriptions.Create(ctx, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	out := map[string]any{
+		"subscription_id": sub.ID,
+		"status":          string(sub.Status),
+	}
+	if sub.LatestInvoice != nil {
+		out["latest_invoice"] = sub.LatestInvoice.ID
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
 }
 
 // metadataFromInput coerces input["metadata"] into a string-keyed
