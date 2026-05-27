@@ -5,6 +5,31 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4] — 2026-05-27
+
+### Fixed
+
+- **`instance_schema` did not declare operator-injected metadata
+  fields** (`base_url` / `environment` / `provider`). The validation
+  instance `stripe-dakasa-validation` (and any real operator template)
+  carries these on `spec.config` for ergonomics — base_url for the
+  RPC endpoint override on the harness pod, environment for
+  sandbox/production tagging, provider as a provider-name echo.
+  yggdrasil-core's instance-config validator rejects undeclared
+  fields during dispatch with `integration config field "<x>" is not
+  declared in the integration_type schema`. Surfaced during the
+  v2.2.3 smoke when the credential_schema gate finally passed.
+- Declared `base_url`, `environment`, `provider` as additional
+  string properties on `InstanceSchema.Properties`. The adapter
+  ignores fields it does not consume; this only opens the validator
+  gate. The canonical adapter-side override hook for the RPC base
+  URL remains `stripe_api_base_url` (see `clientForExecuteConfig`).
+- Covered by `TestSpec_InstanceSchemaDeclaresOperatorMetadata`.
+- `AdapterVersion` bumped 2.2.3 → 2.2.4 (patch — additive schema
+  fields, no client-side breaking change). YAML manifest
+  `spec.version` / `spec.adapter.version` / `spec.adapter.image_tag`
+  aligned to 2.2.4.
+
 ## [2.2.3] — 2026-05-27
 
 ### Fixed

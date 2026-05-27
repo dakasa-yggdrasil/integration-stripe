@@ -20,7 +20,7 @@ import (
 const (
 	Provider        = "stripe"
 	IntegrationType = "stripe"
-	AdapterVersion  = "2.2.3"
+	AdapterVersion  = "2.2.4"
 	// StripeAPIVersion pins the Stripe API version. Bumping requires a
 	// full integration test cycle + adapter version bump. Documented in
 	// README.md and integration_type manifest spec.adapter.version notes.
@@ -150,6 +150,26 @@ func Describe() contract.AdapterDescribeResponse {
 				"webhook_tolerance_seconds": {
 					Type:    "integer",
 					Default: 300,
+				},
+				// Operator-injected non-secret metadata accepted by every
+				// stripe instance. Declared so yggdrasil-core does not
+				// reject the config at validation time. The adapter
+				// ignores fields it does not consume; the canonical
+				// adapter-side override hook is `stripe_api_base_url`
+				// (see clientForExecuteConfig). These three exist for
+				// operator ergonomics (e.g. "sandbox" vs "production"
+				// filtering, base URL override on the validation harness).
+				"base_url": {
+					Type:        "string",
+					Description: "Override RPC base URL for the adapter pod (used by the validation harness).",
+				},
+				"environment": {
+					Type:        "string",
+					Description: "Free-form environment tag (sandbox/production) for operator filtering.",
+				},
+				"provider": {
+					Type:        "string",
+					Description: "Provider-name echo (always \"stripe\"). Kept for instance ergonomics.",
 				},
 			},
 		},
