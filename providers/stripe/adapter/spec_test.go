@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -149,6 +150,35 @@ func TestExecute_UpdateCustomer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "cus_abc", resp.Output["customer_id"])
 	require.Equal(t, true, resp.Output["updated"])
+}
+
+func TestExecute_CreateSubscription(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/subscriptions", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		body, _ := io.ReadAll(r.Body)
+		require.Contains(t, string(body), "items[0][price]=price_test")
+		require.Contains(t, string(body), "payment_behavior=default_incomplete")
+		_, _ = w.Write([]byte(`{"id":"sub_test","status":"incomplete","latest_invoice":"in_test"}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationCreateSubscription,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"customer": "cus_abc",
+			"items": []any{
+				map[string]any{"price": "price_test", "quantity": 1},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "sub_test", resp.Output["subscription_id"])
+	require.Equal(t, "incomplete", resp.Output["status"])
 }
 
 // silence unused json import until verify_webhook_signature lands in Task 32.
