@@ -87,6 +87,25 @@ func ExecuteHandler(logger *zap.Logger, a *adapter.Adapter, instances map[string
 // in-tree reconciler dispatch helpers can extract it per-call (the
 // SDK doesn't forward env.InstanceID into Reconciler.Ensure — only
 // onto the auto-emitted MutationEvent).
+//
+// The bridge also stashes the inbound instance_spec.config /
+// instance_spec.credentials / req.Auth into the input payload under
+// reserved keys (ad.InstanceConfigKey / InstanceCredsKey /
+// InstanceAuthKey). The per-resource dispatch helpers extract these
+// on the other side of the SDK transport and rehydrate a full
+// AdapterExecuteIntegrationRequest before invoking Execute(). Without
+// this stash the cycle-#243 bridge regression surfaces: every
+// SDK-reconciler-routed write op (ensure_payment_intent,
+// ensure_customer, ensure_subscription, ensure_webhook_endpoint plus
+// the legacy create_/update_/cancel_/list_ aliases) loses
+// instance_spec / req.Auth before reaching Execute().
+//
+// NOTE: integration-stripe also carries a pre-existing structural bug
+// in adapter.Execute / clientForInstance — apiKey is hardcoded empty
+// and InstanceSpec.Credentials["stripe_api_key"] is never read. This
+// bridge fix is necessary but not sufficient; the secondary bug
+// needs a separate cycle. See providers/stripe/adapter/reconcile.go
+// docstring for details.
 func buildSDKDelivery(d rpc.Delivery, req model.AdapterExecuteIntegrationRequest) (rpc.Delivery, error) {
 	input := req.Input
 	if input == nil {
@@ -96,6 +115,17 @@ func buildSDKDelivery(d rpc.Delivery, req model.AdapterExecuteIntegrationRequest
 		if _, present := input["instance_id"]; !present {
 			input["instance_id"] = req.Integration.InstanceID
 		}
+	}
+	// Forward integration context + per-request auth through the SDK
+	// envelope so the in-tree dispatcher can rebuild the full request.
+	if cfg := req.Integration.Spec.Config; cfg != nil {
+		input[ad.InstanceConfigKey] = cfg
+	}
+	if creds := req.Integration.Spec.Credentials; creds != nil {
+		input[ad.InstanceCredsKey] = creds
+	}
+	if auth := req.Auth; auth != nil {
+		input[ad.InstanceAuthKey] = auth
 	}
 	idempotency, _ := req.Metadata["idempotency"].(string)
 	sdkBody, err := json.Marshal(map[string]any{
