@@ -3,8 +3,10 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"os"
 
 	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/adapter"
+	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/sdk/events"
 	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/sdk/reconcile"
 
 	"github.com/dakasa-yggdrasil/integration-stripe/family/contract"
@@ -197,45 +199,72 @@ func extractItems(resp reconcilePayload) []reconcilePayload {
 // tests and any callers that want to drive the adapter through the
 // SDK's typed Reconciler[D,O] interface.
 func WireReconcilers(a *adapter.Adapter, instanceID string) {
+	emitter := newEmitterFromEnv()
+	commonOpts := []reconcile.Option{
+		reconcile.WithProvider(Provider),
+		reconcile.WithEmitter(emitter),
+		reconcile.WithInstanceID(instanceID),
+	}
+
 	reconcile.RegisterReconciler[reconcilePayload, reconcilePayload](
 		a, "payment_intent", "payment_intents",
 		newPaymentIntentReconciler(instanceID),
-		reconcile.WithLegacyNames(
-			"create_payment_intent",
-			"confirm_payment_intent",
-			"cancel_payment_intent",
-			"retrieve_payment_intent",
-		),
+		append(commonOpts,
+			reconcile.WithLegacyNames(
+				"create_payment_intent",
+				"confirm_payment_intent",
+				"cancel_payment_intent",
+				"retrieve_payment_intent",
+			),
+		)...,
 	)
 	reconcile.RegisterReconciler[reconcilePayload, reconcilePayload](
 		a, "customer", "customers",
 		newCustomerReconciler(instanceID),
-		reconcile.WithLegacyNames(
-			"create_customer",
-			"update_customer",
-			"list_customers",
-		),
+		append(commonOpts,
+			reconcile.WithLegacyNames(
+				"create_customer",
+				"update_customer",
+				"list_customers",
+			),
+		)...,
 	)
 	reconcile.RegisterReconciler[reconcilePayload, reconcilePayload](
 		a, "subscription", "subscriptions",
 		newSubscriptionReconciler(instanceID),
-		reconcile.WithLegacyNames(
-			"create_subscription",
-			"update_subscription",
-			"cancel_subscription",
-			"list_subscriptions",
-		),
+		append(commonOpts,
+			reconcile.WithLegacyNames(
+				"create_subscription",
+				"update_subscription",
+				"cancel_subscription",
+				"list_subscriptions",
+			),
+		)...,
 	)
 	reconcile.RegisterReconciler[reconcilePayload, reconcilePayload](
 		a, "webhook_endpoint", "webhook_endpoints",
 		newWebhookEndpointReconciler(instanceID),
-		reconcile.WithLegacyNames(
-			"create_webhook_endpoint",
-			"update_webhook_endpoint",
-			"delete_webhook_endpoint",
-			"list_webhook_endpoints",
-		),
+		append(commonOpts,
+			reconcile.WithLegacyNames(
+				"create_webhook_endpoint",
+				"update_webhook_endpoint",
+				"delete_webhook_endpoint",
+				"list_webhook_endpoints",
+			),
+		)...,
 	)
+}
+
+// newEmitterFromEnv returns an events.Emitter wired to yggdrasil-core
+// when YGGDRASIL_CORE_URL is set, otherwise a NoopEmitter. Env-driven
+// keeps the Lego principle: no broker / secret-store / cloud is
+// hardcoded; callers point us at any core URL they want. Emission is
+// best-effort (see sdk/reconcile.WithEmitter docstring).
+func newEmitterFromEnv() events.Emitter {
+	if os.Getenv(events.EnvCoreURL) == "" {
+		return &events.NoopEmitter{}
+	}
+	return events.NewHTTPEmitter()
 }
 
 // Silence "json imported but unused" — kept for callers that marshal
