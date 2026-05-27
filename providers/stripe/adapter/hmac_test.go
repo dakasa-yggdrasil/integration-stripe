@@ -1,0 +1,33 @@
+package adapter
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+// makeStripeSig builds a Stripe-Signature header value for the given
+// payload + secret at timestamp ts. Used by every HMAC test and by the
+// webhook server tests in webhook_server_test.go.
+func makeStripeSig(payload []byte, secret []byte, ts int64) string {
+	signed := []byte(fmt.Sprintf("%d.%s", ts, string(payload)))
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(signed)
+	return fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil)))
+}
+
+func TestVerifyStripe_KnownGoodSignature(t *testing.T) {
+	payload := []byte(`{"id":"evt_1","type":"payment_intent.succeeded"}`)
+	secret := []byte("whsec_test_001")
+	ts := time.Now().Unix()
+	header := makeStripeSig(payload, secret, ts)
+
+	gotTS, err := VerifySignature(payload, header, secret, 300)
+	require.NoError(t, err)
+	require.Equal(t, ts, gotTS)
+}
