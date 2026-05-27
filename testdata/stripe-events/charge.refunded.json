@@ -1,0 +1,7 @@
+{
+  "id": "evt_charge_refunded_01",
+  "object": "event",
+  "type": "charge.refunded",
+  "livemode": false,
+  "data": {"object": {"id": "ch_test_01", "amount": 1990, "amount_refunded": 1990, "refunded": true}}
+}

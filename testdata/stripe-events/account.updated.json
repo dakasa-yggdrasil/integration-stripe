@@ -1,0 +1,7 @@
+{
+  "id": "evt_account_updated_01",
+  "object": "event",
+  "type": "account.updated",
+  "livemode": false,
+  "data": {"object": {"id": "acct_test_01", "charges_enabled": true, "payouts_enabled": true, "details_submitted": true}}
+}
