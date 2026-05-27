@@ -5,23 +5,35 @@ metadata:
   namespace: global
 spec:
   provider: stripe
-  version: 2.0.0
+  version: 2.2.3
   adapter:
     image_repo: ghcr.io/dakasa-yggdrasil/integration-stripe
-    image_tag: v2.0.0
+    image_tag: v2.2.3
     transport: http_json
     endpoints:
       describe: /rpc/describe
       execute: /rpc/execute
     timeout_seconds: 30
-    version: 2.0.0
+    version: 2.2.3
   capabilities:
   - describe
   - execute
   credential_schema:
     mode: inline
+    # stripe_secret_key is declared as an accepted alias for
+    # stripe_api_key — operator AWS Secrets Manager (and equivalent
+    # secret-store) entries that follow that naming convention work
+    # WITHOUT renaming the secret. yggdrasil-core validates incoming
+    # instance configs against this exact schema; the adapter-level
+    # alias logic in adapter.Execute (v2.2.2) cannot bypass core's
+    # field validator. At least one of stripe_api_key /
+    # stripe_secret_key must be supplied; the canonical name wins
+    # when both are present.
     properties:
       stripe_api_key:
+        type: string
+        secret: true
+      stripe_secret_key:
         type: string
         secret: true
       stripe_webhook_secret:

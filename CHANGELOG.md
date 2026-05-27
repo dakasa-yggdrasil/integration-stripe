@@ -5,6 +5,39 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] — 2026-05-27
+
+### Fixed
+
+- **`integration_type.stripe.yaml` credential_schema only declared
+  `stripe_api_key`** — the v2.2.2 Go-level `Describe()` declares
+  both `stripe_api_key` and `stripe_secret_key`, and `adapter.Execute`
+  reads either field with canonical-first preference, but the YAML
+  manifest registered into yggdrasil-core via
+  `POST /api/v1/manifests?kind=integration_type` was missing
+  `stripe_secret_key`. Core validates incoming instance configs
+  against the YAML's `credential_schema.properties` BEFORE the
+  request reaches the adapter and rejects with `integration
+  credentials field "stripe_secret_key" is not declared in the
+  integration_type schema`. Operators using AWS Secrets Manager (or
+  any secret-store) entries that follow the `stripe_secret_key`
+  naming convention could not bind to a stripe instance even though
+  the adapter would have happily resolved the alias.
+- Declare `stripe_secret_key` as `type: string, secret: true` in
+  `manifest/integration_type.stripe.yaml` credential_schema —
+  alongside `stripe_api_key`. The alias is now reachable end-to-end
+  (validator pass → adapter read → canonical-preference resolution).
+- Covered by `TestManifest_IntegrationTypeYAML_DeclaresBothKeyAliases`
+  and the existing Go-level `TestSpec_CredentialSchemaDeclaresBothKeyAliases`
+  — both pin the credential_schema shape so adapter Go declarations
+  and YAML stay aligned across future schema changes.
+- `AdapterVersion` bumped 2.2.2 → 2.2.3 (patch — additive schema
+  field, no client-side breaking change; the alias was already
+  accepted by `adapter.Execute` since v2.2.2).
+- Manifest YAML `spec.version` / `spec.adapter.version` /
+  `spec.adapter.image_tag` aligned to 2.2.3 so the registered
+  catalog row matches the new image.
+
 ## [2.2.2] — 2026-05-27
 
 ### Fixed
