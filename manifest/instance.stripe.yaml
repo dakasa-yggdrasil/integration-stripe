@@ -1,0 +1,59 @@
+---
+apiVersion: yggdrasil.io/v1alpha1
+kind: integration_type
+metadata:
+  name: stripe
+  namespace: global
+spec:
+  provider: stripe
+  adapter:
+    version: "1.0.0"
+    transport: http_json
+    endpoints:
+      describe: /rpc/describe
+      execute: /rpc/execute
+    stripe_api_version: "2024-12-18.acacia"   # documented in README + spec.adapter
+  resource_types:
+    - name: payment
+      canonical_prefix: thirdparty.stripe.payment
+      identity_template: "payment.{id}"
+    - name: customer
+      canonical_prefix: thirdparty.stripe.customer
+      identity_template: "customer.{id}"
+    - name: subscription
+      canonical_prefix: thirdparty.stripe.subscription
+      identity_template: "subscription.{id}"
+---
+apiVersion: yggdrasil.io/v1alpha1
+kind: integration_instance
+metadata:
+  name: integration-stripe-dakasa
+  namespace: dakasa
+spec:
+  type_ref: { namespace: global, name: stripe }
+  config:
+    stripe_account_id: ""
+    stripe_api_version: "2024-12-18.acacia"
+    webhook_tolerance_seconds: 300
+  credentials_ref:
+    secret_name: dakasa-stripe-credentials
+    keys:
+      stripe_api_key: api_key
+      stripe_webhook_secret: webhook_secret
+---
+apiVersion: yggdrasil.io/v1alpha1
+kind: integration_instance
+metadata:
+  name: integration-stripe-client-acme
+  namespace: acme-corp
+spec:
+  type_ref: { namespace: global, name: stripe }
+  config:
+    stripe_account_id: "acct_1AcmeXYZ"
+    stripe_api_version: "2024-12-18.acacia"
+    webhook_tolerance_seconds: 300
+  credentials_ref:
+    secret_name: acme-stripe-credentials
+    keys:
+      stripe_api_key: api_key
+      stripe_webhook_secret: webhook_secret
