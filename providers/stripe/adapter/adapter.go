@@ -42,7 +42,22 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return verifyWebhookSig(req)
 	}
 
-	client, err := clientForInstance(req.Integration.InstanceID, "", "", StripeAPIVersion)
+	// Read per-instance credentials + config rehydrated by the bridge
+	// (providers/stripe/message/execute.go::buildSDKDelivery →
+	// reconcile.go::buildExecuteRequest). Pre-2.2.2 the call was
+	// clientForInstance(InstanceID, "", "", ...) with a hardcoded empty
+	// apiKey — every write capability failed at NewStripeClient with
+	// "stripe api key is required" regardless of bridge state. Reading
+	// from Spec.Credentials closes the secondary bug noted in v2.2.1
+	// CHANGELOG.
+	apiKey := stringOr(req.Integration.Spec.Credentials, "stripe_api_key")
+	baseURL := stringOr(req.Integration.Spec.Config, "stripe_api_base_url")
+	apiVersion := stringOr(req.Integration.Spec.Config, "stripe_api_version")
+	if apiVersion == "" {
+		apiVersion = StripeAPIVersion
+	}
+
+	client, err := clientForInstance(req.Integration.InstanceID, apiKey, baseURL, apiVersion)
 	if err != nil {
 		return contract.AdapterExecuteIntegrationResponse{}, err
 	}

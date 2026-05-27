@@ -24,7 +24,15 @@ import (
 // helpers, verify_webhook_signature, manage_connect_account) fall
 // back to the legacy adapter.Execute switch path.
 func ExecuteHandler(logger *zap.Logger, a *adapter.Adapter, instances map[string]config.InstanceConfig) Handler {
-	_ = instances // per-instance config consumed inside adapter.Execute via clientForInstance
+	// Per-instance config + credentials reach adapter.Execute through the
+	// wire-level integration.instance_spec (rehydrated by the bridge
+	// below into the SDK envelope and again on the other side by
+	// reconcile.go::buildExecuteRequest). The `instances` map captured
+	// at boot is the FALLBACK / single-tenant env-driven path consumed
+	// by the webhook server only; Execute() does NOT depend on this
+	// map in v2.2.2+ — it reads stripe_api_key from
+	// req.Integration.Spec.Credentials per-request.
+	_ = instances
 	return func(ctx context.Context, d rpc.Delivery) ([]byte, string, error) {
 		var req model.AdapterExecuteIntegrationRequest
 		if err := json.Unmarshal(d.Body, &req); err != nil {
@@ -100,12 +108,14 @@ func ExecuteHandler(logger *zap.Logger, a *adapter.Adapter, instances map[string
 // the legacy create_/update_/cancel_/list_ aliases) loses
 // instance_spec / req.Auth before reaching Execute().
 //
-// NOTE: integration-stripe also carries a pre-existing structural bug
-// in adapter.Execute / clientForInstance — apiKey is hardcoded empty
-// and InstanceSpec.Credentials["stripe_api_key"] is never read. This
-// bridge fix is necessary but not sufficient; the secondary bug
-// needs a separate cycle. See providers/stripe/adapter/reconcile.go
-// docstring for details.
+// NOTE: the secondary structural bug noted in the v2.2.1 release notes
+// — adapter.Execute calling clientForInstance(InstanceID, "", "", ...)
+// with a hardcoded empty apiKey — was closed in v2.2.2: Execute() now
+// reads stripe_api_key from req.Integration.Spec.Credentials and
+// optional stripe_api_base_url / stripe_api_version from
+// req.Integration.Spec.Config (rehydrated by buildExecuteRequest).
+// Bridge + Execute fixes now compose to make stripe writes work in
+// production.
 func buildSDKDelivery(d rpc.Delivery, req model.AdapterExecuteIntegrationRequest) (rpc.Delivery, error) {
 	input := req.Input
 	if input == nil {

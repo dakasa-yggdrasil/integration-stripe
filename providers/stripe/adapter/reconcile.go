@@ -38,18 +38,15 @@ type reconcilePayload map[string]any
 // instance_spec / req.Auth on the SDK-reconciler-routed path. Mirrors
 // the canonical fix in integration-github v2.4.1.
 //
-// NOTE (DONE_WITH_CONCERNS, 2026-05-27): integration-stripe ALSO
-// carries a pre-existing structural bug independent of this fix —
-// adapter.Execute calls clientForInstance(InstanceID, "", "", ...)
-// with an empty apiKey unconditionally and never reads
-// req.Integration.InstanceSpec.Credentials["stripe_api_key"]. The
-// instances map loaded by cmd/adapter/main.go::config.LoadInstances
-// is captured by message.ExecuteHandler but never threaded into
-// clientForInstance, so in production NewStripeClient("") returns
-// "stripe api key is required" and writes fail regardless of whether
-// the bridge forwards credentials. The bridge fix here is necessary
-// but not sufficient; the secondary Execute()/clientForInstance bug
-// needs a separate cycle.
+// CLOSED in v2.2.2 (2026-05-27): the secondary structural bug —
+// adapter.Execute calling clientForInstance(InstanceID, "", "", ...)
+// with an empty apiKey — is fixed. Execute() now reads
+// req.Integration.Spec.Credentials["stripe_api_key"] (rehydrated by
+// buildExecuteRequest below) and threads it into clientForInstance.
+// Also reads optional stripe_api_base_url / stripe_api_version from
+// Spec.Config. The bridge stash + Execute rehydration now compose to
+// make stripe writes work in production. See
+// TestExecute_ReadsAPIKeyFromCredentials.
 const (
 	InstanceConfigKey = "__instance_config"
 	InstanceCredsKey  = "__instance_credentials"
