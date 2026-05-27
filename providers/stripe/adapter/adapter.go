@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/stripe/stripe-go/v83"
 
@@ -20,6 +21,15 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 	if op == "" {
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("operation is required")
 	}
+	instance := req.Integration.InstanceID
+	if instance == "" {
+		instance = "unknown"
+	}
+	start := time.Now()
+	defer func() {
+		StripeExecuteDuration.WithLabelValues(op, instance).Observe(time.Since(start).Seconds())
+	}()
+	StripeExecuteRequests.WithLabelValues(op, instance).Inc()
 	ctx := context.Background()
 
 	// verify_webhook_signature does not need a Stripe HTTP client.

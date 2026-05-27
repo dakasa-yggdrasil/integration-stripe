@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/adapter"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
 	ad "github.com/dakasa-yggdrasil/integration-stripe/providers/stripe/adapter"
@@ -85,6 +86,7 @@ func newHealthServer() *http.Server {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ready"))
 	})
+	mux.Handle("/metrics", promhttp.Handler())
 	return &http.Server{
 		Addr:              ":" + envOrDefault("HEALTHCHECK_PORT", "8080"),
 		Handler:           mux,
