@@ -50,7 +50,19 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 	// "stripe api key is required" regardless of bridge state. Reading
 	// from Spec.Credentials closes the secondary bug noted in v2.2.1
 	// CHANGELOG.
+	//
+	// Accept "stripe_api_key" (the canonical credential_schema field) or
+	// "stripe_secret_key" (the field name commonly used in operator AWS
+	// Secrets Manager / GCP Secret Manager / Vault entries — many
+	// secret-store conventions name the value "stripe_secret_key"). The
+	// alias is intentional: forcing every operator secret to rename to
+	// match the schema would create deployment friction that the Lego
+	// principle (§2) discourages. Both reach the same Stripe SDK
+	// boundary; the schema field name is purely a label.
 	apiKey := stringOr(req.Integration.Spec.Credentials, "stripe_api_key")
+	if apiKey == "" {
+		apiKey = stringOr(req.Integration.Spec.Credentials, "stripe_secret_key")
+	}
 	baseURL := stringOr(req.Integration.Spec.Config, "stripe_api_base_url")
 	apiVersion := stringOr(req.Integration.Spec.Config, "stripe_api_version")
 	if apiVersion == "" {

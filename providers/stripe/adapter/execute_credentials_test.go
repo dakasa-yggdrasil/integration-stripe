@@ -85,6 +85,96 @@ func TestExecute_ReadsAPIKeyFromCredentials(t *testing.T) {
 		"stripe_api_key from req.Integration.Spec.Credentials must reach the Stripe HTTP request as Bearer token")
 }
 
+// TestExecute_ReadsAPIKeyFromStripeSecretKeyAlias proves the alias
+// "stripe_secret_key" is accepted when "stripe_api_key" is absent.
+// Mirrors the operator convention where AWS Secrets Manager (and
+// other secret stores) commonly name the secret value
+// "stripe_secret_key". Without this alias the adapter would still
+// fail with "stripe api key is required" for instances whose
+// credentials_ref resolves to a secret using that naming.
+func TestExecute_ReadsAPIKeyFromStripeSecretKeyAlias(t *testing.T) {
+	const canary = "sk_test_canary_from_alias"
+
+	var mu sync.Mutex
+	var sawAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		sawAuth = r.Header.Get("Authorization")
+		mu.Unlock()
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = w.Write([]byte(`{"id":"cus_alias","object":"customer","email":"alias@example.com","created":1700000000}`))
+	}))
+	defer ts.Close()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation: OperationEnsureCustomer,
+		Integration: contract.IntegrationContext{
+			InstanceID: "stripe-alias-canary",
+			Spec: contract.IntegrationInstanceManifestSpec{
+				Credentials: map[string]any{
+					// NOTE: NOT "stripe_api_key" — the alias.
+					"stripe_secret_key": canary,
+				},
+				Config: map[string]any{
+					"stripe_api_base_url": ts.URL,
+				},
+			},
+		},
+		Input: map[string]any{
+			"email": "alias@example.com",
+		},
+	})
+	require.NoError(t, err, "Execute must succeed when credentials carry stripe_secret_key alias")
+	require.NotNil(t, resp.Output)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, "Bearer "+canary, sawAuth,
+		"stripe_secret_key alias must reach Stripe HTTP as Bearer token")
+}
+
+// TestExecute_StripeAPIKeyPrefersCanonicalOverAlias proves the canonical
+// field wins when both are present — preserves predictability so
+// operators rotating to the canonical name don't see surprise routing.
+func TestExecute_StripeAPIKeyPrefersCanonicalOverAlias(t *testing.T) {
+	const canonicalKey = "sk_test_CANONICAL"
+	const aliasKey = "sk_test_ALIAS"
+
+	var mu sync.Mutex
+	var sawAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		sawAuth = r.Header.Get("Authorization")
+		mu.Unlock()
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = w.Write([]byte(`{"id":"cus_pri","object":"customer","email":"pri@example.com","created":1700000000}`))
+	}))
+	defer ts.Close()
+
+	_, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation: OperationEnsureCustomer,
+		Integration: contract.IntegrationContext{
+			InstanceID: "stripe-priority-canary",
+			Spec: contract.IntegrationInstanceManifestSpec{
+				Credentials: map[string]any{
+					"stripe_api_key":    canonicalKey,
+					"stripe_secret_key": aliasKey,
+				},
+				Config: map[string]any{
+					"stripe_api_base_url": ts.URL,
+				},
+			},
+		},
+		Input: map[string]any{"email": "pri@example.com"},
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, "Bearer "+canonicalKey, sawAuth,
+		"canonical stripe_api_key must win when both fields are present")
+}
+
 // TestExecute_MissingAPIKeyRejected confirms the error contract is
 // preserved: when credentials are absent, Execute() still surfaces a
 // clear "api key is required" error rather than silently dispatching

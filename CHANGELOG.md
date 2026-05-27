@@ -43,6 +43,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change; the credential is one already declared in the v1.0.0
   `credential_schema`).
 
+### Added — credential field alias
+
+- The `credential_schema` now accepts `stripe_secret_key` as a
+  recognized alias for `stripe_api_key`. Execute() reads
+  `stripe_api_key` first then falls back to `stripe_secret_key` —
+  operator secret-store entries that follow that naming convention
+  (e.g. AWS Secrets Manager `dakasa/validation/yggdrasil-stripe-secret`
+  with field `stripe_secret_key`) work WITHOUT renaming the secret.
+  The Lego principle (§2) argues against forcing every operator to
+  rename their secret-store entries to match the canonical field name;
+  the alias is a one-line accommodation.
+- The canonical `stripe_api_key` wins when both fields are present
+  (predictable for operators rotating to the canonical name).
+- Covered by
+  `TestExecute_ReadsAPIKeyFromStripeSecretKeyAlias` and
+  `TestExecute_StripeAPIKeyPrefersCanonicalOverAlias`.
+
 ### Closes
 
 - The `DONE_WITH_CONCERNS` note from v2.2.1 ("`adapter.Execute` /

@@ -111,12 +111,22 @@ func Describe() contract.AdapterDescribeResponse {
 		},
 		Capabilities: []string{"describe", "execute"},
 		CredentialSchema: contract.IntegrationSchemaSpec{
-			Mode:     "inline",
-			Required: []string{"stripe_api_key"},
+			Mode: "inline",
+			// Either field is accepted. Adapter reads stripe_api_key first
+			// then falls back to stripe_secret_key — operators using
+			// secret-store conventions that name the value
+			// "stripe_secret_key" don't need to rename their secret.
+			// At least one must be present.
+			Required: []string{},
 			Properties: map[string]contract.IntegrationSchemaProperty{
 				"stripe_api_key": {
 					Type:        "string",
-					Description: "Stripe API key (sk_live_* or rk_live_*).",
+					Description: "Stripe API key (sk_live_* or rk_live_*). Canonical field name.",
+					Secret:      true,
+				},
+				"stripe_secret_key": {
+					Type:        "string",
+					Description: "Stripe API key (sk_live_* or rk_live_*). Alias accepted when secret store entries follow that naming convention. Read only if stripe_api_key is absent.",
 					Secret:      true,
 				},
 			},
