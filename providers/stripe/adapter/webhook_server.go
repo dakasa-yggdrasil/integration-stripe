@@ -111,6 +111,7 @@ func (s *WebhookServer) handleStripeWebhook(w http.ResponseWriter, r *http.Reque
 		s.logger.Warn("invalid webhook signature",
 			zap.String("instance_id", instanceID),
 			zap.Error(err))
+		StripeWebhookSigFailures.WithLabelValues(instanceID).Inc()
 		http.Error(w, "invalid signature", http.StatusBadRequest)
 		return
 	}
@@ -128,9 +129,11 @@ func (s *WebhookServer) handleStripeWebhook(w http.ResponseWriter, r *http.Reque
 
 	dedupKey := instanceID + ":" + ev.ID
 	if _, dup := s.dedup.LoadOrStore(dedupKey, dedupEntry{at: time.Now()}); dup {
+		StripeWebhookDedup.WithLabelValues(instanceID).Inc()
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	StripeWebhookReceived.WithLabelValues(ev.Type, instanceID).Inc()
 	go s.evictExpired()
 
 	// 200 BEFORE emit (spec §2.5).
@@ -157,6 +160,9 @@ func (s *WebhookServer) handleStripeWebhook(w http.ResponseWriter, r *http.Reque
 					zap.String("instance_id", instanceID),
 					zap.String("routing_key", routingKey),
 					zap.Error(err))
+				StripeRTAEmitErrors.WithLabelValues(routingKey, instanceID).Inc()
+			} else {
+				StripeRTAEmit.WithLabelValues(routingKey, instanceID).Inc()
 			}
 		}()
 	}
