@@ -156,7 +156,6 @@ spec:
     discoverable: false
     default_actions:
     - observe_charges
-    - create_refund
     canonical_prefix: thirdparty.stripe.charge
     identity_template: charge.{id}
   - name: balance
@@ -192,6 +191,12 @@ spec:
     - manage_connect_account
     canonical_prefix: thirdparty.stripe.connect_account
     identity_template: connect_account.{id}
+  - name: refund
+    discoverable: false
+    default_actions:
+    - create_refund
+    canonical_prefix: thirdparty.stripe.refund
+    identity_template: refund.{id}
   discovery:
     mode: push
     cursor: none
