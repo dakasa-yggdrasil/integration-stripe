@@ -1,0 +1,19 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: observe-subscriptions
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: observe_subscriptions
+  description: |
+    Observe Stripe Subscriptions. Filter {id} → single record; {customer}
+    → list-by-customer; else paginated list.
+  inputs:
+    id: { type: string }
+    customer: { type: string }
+    limit: { type: integer, default: 10 }
+    stripe_account: { type: string }
+  outputs:
+    items: { type: array }
+    has_more: { type: boolean }

@@ -1,0 +1,18 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: destroy-webhook-endpoint
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: destroy_webhook_endpoint
+  description: |
+    Destroy a Stripe WebhookEndpoint. DELETE /v1/webhook_endpoints/{id}.
+    404 → already-absent success.
+  inputs:
+    id: { type: string }
+    ref: { type: string, description: "SDK canonical Destroy alias for id." }
+    stripe_account: { type: string }
+  outputs:
+    id: { type: string }
+    deleted: { type: boolean }

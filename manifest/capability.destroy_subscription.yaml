@@ -1,16 +1,18 @@
 apiVersion: yggdrasil.io/v1alpha1
 kind: capability
 metadata:
-  name: cancel-subscription
+  name: destroy-subscription
   namespace: global
 spec:
   type_ref: { namespace: global, name: stripe }
-  operation: cancel_subscription
+  operation: destroy_subscription
   description: |
-    Cancel a Subscription immediately (DELETE) or at period end
-    (POST update with cancel_at_period_end=true).
+    Destroy a Stripe Subscription. DELETE /v1/subscriptions/{id} immediate
+    cancel; pass {cancel_at_period_end=true} for graceful update path.
+    404 → already-absent success.
   inputs:
-    subscription_id: { type: string, required: true }
+    subscription_id: { type: string }
+    ref: { type: string, description: "SDK canonical Destroy alias for subscription_id." }
     cancel_at_period_end: { type: boolean, default: false }
     stripe_account: { type: string }
   outputs:

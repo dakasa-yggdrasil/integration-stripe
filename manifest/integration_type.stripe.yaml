@@ -5,10 +5,10 @@ metadata:
   namespace: global
 spec:
   provider: stripe
-  version: 1.0.0
+  version: 2.0.0
   adapter:
     image_repo: ghcr.io/dakasa-yggdrasil/integration-stripe
-    image_tag: v1.0.0
+    image_tag: v2.0.0
     transport: http_json
     endpoints:
       describe: /rpc/describe
@@ -21,49 +21,80 @@ spec:
     mode: env
     required: [STRIPE_API_KEY, STRIPE_WEBHOOK_SECRET]
   action_catalog:
-    - name: create_payment_intent
-      category: capability
-      idempotent: false
-      resource_types: [payment_intent]
-    - name: confirm_payment_intent
-      category: capability
-      idempotent: false
-      resource_types: [payment_intent]
-    - name: cancel_payment_intent
+    # payment_intent triple
+    - name: ensure_payment_intent
       category: capability
       idempotent: true
       resource_types: [payment_intent]
-    - name: create_customer
+    - name: observe_payment_intents
       category: capability
-      idempotent: false
-      resource_types: [customer]
-    - name: update_customer
+      idempotent: true
+      resource_types: [payment_intent]
+    - name: destroy_payment_intent
+      category: capability
+      idempotent: true
+      resource_types: [payment_intent]
+    # customer triple
+    - name: ensure_customer
       category: capability
       idempotent: true
       resource_types: [customer]
-    - name: create_subscription
+    - name: observe_customers
       category: capability
-      idempotent: false
-      resource_types: [subscription]
-    - name: cancel_subscription
+      idempotent: true
+      resource_types: [customer]
+    - name: destroy_customer
+      category: capability
+      idempotent: true
+      resource_types: [customer]
+    # subscription triple
+    - name: ensure_subscription
       category: capability
       idempotent: true
       resource_types: [subscription]
-    - name: create_refund
+    - name: observe_subscriptions
       category: capability
-      idempotent: false
-      resource_types: [refund]
-    - name: create_setup_intent
+      idempotent: true
+      resource_types: [subscription]
+    - name: destroy_subscription
       category: capability
-      idempotent: false
-      resource_types: [setup_intent]
-    - name: list_charges
+      idempotent: true
+      resource_types: [subscription]
+    # charge (read-only) + refund (money-movement, allowlisted)
+    - name: observe_charges
       category: capability
       idempotent: true
       resource_types: [charge]
+    - name: create_refund
+      category: capability
+      idempotent: true
+      resource_types: [refund]
+    # balance (read-only singleton)
+    - name: observe_balance
+      category: capability
+      idempotent: true
+      resource_types: [balance]
+    # webhook_endpoint triple
+    - name: ensure_webhook_endpoint
+      category: capability
+      idempotent: true
+      resource_types: [webhook_endpoint]
+    - name: observe_webhook_endpoints
+      category: capability
+      idempotent: true
+      resource_types: [webhook_endpoint]
+    - name: destroy_webhook_endpoint
+      category: capability
+      idempotent: true
+      resource_types: [webhook_endpoint]
+    # Allowlisted action helpers (kept verbatim from v1.x)
+    - name: create_setup_intent
+      category: capability
+      idempotent: true
+      resource_types: [setup_intent]
     - name: create_payout
       category: capability
-      idempotent: false
+      idempotent: true
       resource_types: [payout]
     - name: manage_connect_account
       category: capability
@@ -72,8 +103,9 @@ spec:
     - name: verify_webhook_signature
       category: capability
       idempotent: true
-      resource_types: [webhook]
+      resource_types: [webhook_endpoint]
+    # Reactor
     - name: stripe_webhook_received
       category: reactor
       idempotent: true
-      resource_types: [webhook]
+      resource_types: [webhook_endpoint]

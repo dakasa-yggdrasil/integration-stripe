@@ -1,21 +1,25 @@
 apiVersion: yggdrasil.io/v1alpha1
 kind: capability
 metadata:
-  name: create-payment-intent
+  name: ensure-payment-intent
   namespace: global
 spec:
   type_ref: { namespace: global, name: stripe }
-  operation: create_payment_intent
+  operation: ensure_payment_intent
   description: |
-    Create a Stripe PaymentIntent for one-time payments.
-    Forwards Stripe-Idempotency-Key derived from input or sha256(amount+currency+customer).
+    Ensure a Stripe PaymentIntent exists in the desired state. Collapses
+    create + confirm into a single canonical operation: when payment_intent_id
+    is supplied, the call follows the confirm path; otherwise creates a new
+    intent (with confirm=true accepted as a shorthand for create-then-confirm).
+    Forwards Stripe Idempotency-Key derived from input or sha256(amount+currency+customer).
   inputs:
+    payment_intent_id:
+      type: string
+      description: When set, follows the confirm path on the existing intent.
     amount:
       type: integer
-      required: true
     currency:
       type: string
-      required: true
       description: ISO 4217 lowercase ("brl", "usd").
     customer:
       type: string
@@ -33,6 +37,8 @@ spec:
       default: false
     setup_future_usage:
       type: string
+    return_url:
+      type: string
     metadata:
       type: object
     stripe_account:
@@ -45,3 +51,4 @@ spec:
     status: { type: string }
     amount: { type: integer }
     currency: { type: string }
+    next_action: { type: object }

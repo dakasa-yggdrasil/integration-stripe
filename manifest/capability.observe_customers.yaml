@@ -1,0 +1,19 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: observe-customers
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: observe_customers
+  description: |
+    Observe Stripe Customers. Filter {id} → single record via
+    GET /v1/customers/{id}; {email} → list-by-email; else paginated list.
+  inputs:
+    id: { type: string }
+    email: { type: string }
+    limit: { type: integer, default: 10 }
+    stripe_account: { type: string }
+  outputs:
+    items: { type: array }
+    has_more: { type: boolean }

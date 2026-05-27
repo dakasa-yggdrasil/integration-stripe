@@ -1,0 +1,18 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: observe-webhook-endpoints
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: observe_webhook_endpoints
+  description: |
+    Observe Stripe WebhookEndpoints. Filter {id} → single record;
+    otherwise paginated list.
+  inputs:
+    id: { type: string }
+    limit: { type: integer, default: 10 }
+    stripe_account: { type: string }
+  outputs:
+    items: { type: array }
+    has_more: { type: boolean }

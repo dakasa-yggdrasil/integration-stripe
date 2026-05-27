@@ -1,0 +1,28 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: ensure-webhook-endpoint
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: ensure_webhook_endpoint
+  description: |
+    Ensure a Stripe WebhookEndpoint exists for the URL + events. When id is
+    provided the call PATCHes; otherwise POST creates a new endpoint.
+  inputs:
+    id: { type: string, description: "When set, follows the PATCH (update) path." }
+    url: { type: string }
+    enabled_events:
+      type: array
+      items: { type: string }
+      default: ["*"]
+    description: { type: string }
+    metadata: { type: object }
+    stripe_account: { type: string }
+    idempotency_key: { type: string }
+  outputs:
+    id: { type: string }
+    url: { type: string }
+    status: { type: string }
+    enabled_events: { type: array }
+    secret: { type: string, description: "Returned on create only." }

@@ -1,0 +1,19 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: observe-payment-intents
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: observe_payment_intents
+  description: |
+    Observe Stripe PaymentIntents. Filter {id} → single record via
+    GET /v1/payment_intents/{id}; otherwise paginated list.
+  inputs:
+    id: { type: string, description: "When set, returns single record." }
+    customer: { type: string }
+    limit: { type: integer, default: 10 }
+    stripe_account: { type: string }
+  outputs:
+    items: { type: array }
+    has_more: { type: boolean }
