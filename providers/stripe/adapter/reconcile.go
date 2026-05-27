@@ -50,7 +50,7 @@ func (r *paymentIntentReconciler) Destroy(ctx context.Context, ref string) error
 func (r *paymentIntentReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
 		Operation:   op,
-		Integration: contract.IntegrationContext{InstanceID: r.instanceID},
+		Integration: contract.IntegrationContext{InstanceID: instanceFromPayload(in, r.instanceID)},
 		Input:       in,
 	})
 	if err != nil {
@@ -86,7 +86,7 @@ func (r *customerReconciler) Destroy(ctx context.Context, ref string) error {
 func (r *customerReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
 		Operation:   op,
-		Integration: contract.IntegrationContext{InstanceID: r.instanceID},
+		Integration: contract.IntegrationContext{InstanceID: instanceFromPayload(in, r.instanceID)},
 		Input:       in,
 	})
 	if err != nil {
@@ -122,7 +122,7 @@ func (r *subscriptionReconciler) Destroy(ctx context.Context, ref string) error 
 func (r *subscriptionReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
 		Operation:   op,
-		Integration: contract.IntegrationContext{InstanceID: r.instanceID},
+		Integration: contract.IntegrationContext{InstanceID: instanceFromPayload(in, r.instanceID)},
 		Input:       in,
 	})
 	if err != nil {
@@ -158,13 +158,28 @@ func (r *webhookEndpointReconciler) Destroy(ctx context.Context, ref string) err
 func (r *webhookEndpointReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
 	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
 		Operation:   op,
-		Integration: contract.IntegrationContext{InstanceID: r.instanceID},
+		Integration: contract.IntegrationContext{InstanceID: instanceFromPayload(in, r.instanceID)},
 		Input:       in,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return reconcilePayload(resp.Output), nil
+}
+
+// instanceFromPayload pulls the instance_id off a reconcilePayload (the
+// SDK forwards env.InstanceID into the input map via the bridge in
+// controllers/message/execute.go) so production routing keeps the
+// per-request instance context. Falls back to fallback when the
+// payload carries no override — preserving test/single-instance flows.
+func instanceFromPayload(in reconcilePayload, fallback string) string {
+	if in == nil {
+		return fallback
+	}
+	if v, ok := in["instance_id"].(string); ok && v != "" {
+		return v
+	}
+	return fallback
 }
 
 // extractItems pulls the items array from a paged observe response,
@@ -190,14 +205,15 @@ func extractItems(resp reconcilePayload) []reconcilePayload {
 // webhook_endpoint). The pre-v2.0.0 legacy capability names are kept
 // alive through reconcile.WithLegacyNames so callers that still send
 // e.g. "create_payment_intent" route to ensure_payment_intent with a
-// WARN log entry. The shim is removed in SDK v0.6.0; adapters MUST
-// drop the WithLegacyNames lists before bumping past v0.5.x.
+// WARN log entry. The shim removal target moved to SDK v0.7.0.
 //
-// Production main() does NOT wire this — the existing message.Execute
-// dispatch path (Execute → ResolveOperation → switch) is the runtime.
-// WireReconcilers is the Go-API expression of the convention used by
-// tests and any callers that want to drive the adapter through the
-// SDK's typed Reconciler[D,O] interface.
+// Production wiring (v0.7.0+): main() calls WireReconcilers BEFORE
+// registering describe/execute, and the controllers/message
+// ExecuteHandler routes inbound traffic through reconcile.Dispatch —
+// activating §6.5 mutation event auto-emission for every operator
+// request. instanceID is the FALLBACK passed when the inbound
+// envelope carries no instance_id; the reconciler dispatch helpers
+// prefer the payload-bound value (instanceFromPayload).
 func WireReconcilers(a *adapter.Adapter, instanceID string) {
 	emitter := newEmitterFromEnv()
 	commonOpts := []reconcile.Option{
