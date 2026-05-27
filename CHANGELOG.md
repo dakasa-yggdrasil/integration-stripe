@@ -5,6 +5,25 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased — 2026-05-27
+
+### Changed
+
+- **`.github/workflows/release.yml`**: build image on every push to
+  `main` (matches the integration-efi pattern). Previously the
+  workflow only triggered on tag push, forcing every cycle to either
+  bump a tag OR manually dispatch the workflow. Tag-push + manual
+  dispatch triggers remain in place; the additional main-branch
+  trigger removes the friction so adapter rolls stay declarative.
+- Tagging strategy aligned with integration-efi via
+  `docker/metadata-action@v5`:
+  - `branch-main-latest` + `sha-<short>` + `edge` on main pushes
+  - `v<version>` + `latest` on tag push
+  - optional `${{ inputs.tag }}` on workflow_dispatch
+- Tagging now uses `docker/metadata-action@v5` instead of a
+  hand-rolled `Resolve version` step — keeps the tag matrix
+  consistent across all adapters in the GHCR namespace.
+
 ## [2.3.1] — 2026-05-27
 
 ### Changed
