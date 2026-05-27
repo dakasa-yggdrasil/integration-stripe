@@ -1,0 +1,22 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: create-payout
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: create_payout
+  description: |
+    Create a payout to a bank account.
+  inputs:
+    amount: { type: integer, required: true }
+    currency: { type: string, required: true }
+    method: { type: string, default: standard }
+    stripe_account: { type: string, description: "Required for Connect." }
+    metadata: { type: object }
+    idempotency_key: { type: string }
+  outputs:
+    payout_id: { type: string }
+    status: { type: string }
+    arrival_date: { type: integer }
+    method: { type: string }

@@ -1,0 +1,20 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: cancel-subscription
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: cancel_subscription
+  description: |
+    Cancel a Subscription immediately (DELETE) or at period end
+    (POST update with cancel_at_period_end=true).
+  inputs:
+    subscription_id: { type: string, required: true }
+    cancel_at_period_end: { type: boolean, default: false }
+    stripe_account: { type: string }
+  outputs:
+    subscription_id: { type: string }
+    status: { type: string }
+    cancel_at_period_end: { type: boolean }
+    canceled_at: { type: integer }

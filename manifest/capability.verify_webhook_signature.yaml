@@ -1,0 +1,21 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: verify-webhook-signature
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: verify_webhook_signature
+  description: |
+    Standalone HMAC SHA256 verification of a Stripe-Signature header
+    against a payload + endpoint_secret. Read-only.
+  inputs:
+    payload: { type: string, required: true }
+    stripe_signature: { type: string, required: true }
+    endpoint_secret: { type: string }
+    tolerance_seconds: { type: integer, default: 300 }
+  outputs:
+    valid: { type: boolean }
+    event_id: { type: string }
+    event_type: { type: string }
+    timestamp: { type: integer }

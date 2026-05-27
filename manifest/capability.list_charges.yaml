@@ -1,0 +1,19 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: list-charges
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: list_charges
+  description: |
+    List charges filtered by customer or payment_intent. Read-only.
+  inputs:
+    customer: { type: string }
+    payment_intent: { type: string }
+    limit: { type: integer, default: 10 }
+    starting_after: { type: string }
+    stripe_account: { type: string }
+  outputs:
+    charges: { type: array }
+    has_more: { type: boolean }

@@ -1,0 +1,22 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: create-customer
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: create_customer
+  description: |
+    Create a Stripe Customer object. Idempotency key defaults to
+    "create_customer_" + email when not provided.
+  inputs:
+    email: { type: string, required: true }
+    name: { type: string }
+    phone: { type: string }
+    metadata: { type: object }
+    stripe_account: { type: string }
+    idempotency_key: { type: string }
+  outputs:
+    customer_id: { type: string }
+    email: { type: string }
+    created: { type: integer }

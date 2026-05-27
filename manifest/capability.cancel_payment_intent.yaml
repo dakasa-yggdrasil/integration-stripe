@@ -1,0 +1,20 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: cancel-payment-intent
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: cancel_payment_intent
+  description: |
+    Cancel a PaymentIntent. Safe to call on already-canceled.
+  inputs:
+    payment_intent_id: { type: string, required: true }
+    cancellation_reason:
+      type: string
+      enum: ["duplicate", "fraudulent", "requested_by_customer", "abandoned"]
+    stripe_account: { type: string }
+  outputs:
+    payment_intent_id: { type: string }
+    status: { type: string }
+    cancellation_reason: { type: string }

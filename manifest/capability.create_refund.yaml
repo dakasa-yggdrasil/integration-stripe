@@ -1,0 +1,23 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: create-refund
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: create_refund
+  description: |
+    Refund a charge or PaymentIntent partially or fully.
+  inputs:
+    charge: { type: string, description: "Either charge or payment_intent is required." }
+    payment_intent: { type: string }
+    amount: { type: integer, description: "Omit for full refund." }
+    reason: { type: string }
+    metadata: { type: object }
+    stripe_account: { type: string }
+    idempotency_key: { type: string }
+  outputs:
+    refund_id: { type: string }
+    status: { type: string }
+    amount: { type: integer }
+    charge: { type: string }

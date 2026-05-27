@@ -1,0 +1,20 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: update-customer
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: update_customer
+  description: |
+    Update mutable fields of an existing Customer.
+  inputs:
+    customer_id: { type: string, required: true }
+    email: { type: string }
+    name: { type: string }
+    phone: { type: string }
+    metadata: { type: object, description: "Merged (not replaced) with existing metadata." }
+    stripe_account: { type: string }
+  outputs:
+    customer_id: { type: string }
+    updated: { type: boolean }
