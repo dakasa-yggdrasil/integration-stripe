@@ -394,6 +394,28 @@ func TestExecute_ManageConnectAccount_UnsupportedOperation(t *testing.T) {
 	require.Contains(t, err.Error(), "unsupported_operation")
 }
 
-// silence unused json import until verify_webhook_signature lands in Task 32.
+func TestExecute_VerifyWebhookSignature(t *testing.T) {
+	payload := []byte(`{"id":"evt_xyz","type":"payment_intent.succeeded","livemode":false}`)
+	secret := "whsec_demo"
+	tsUnix := time.Now().Unix()
+	sigHeader := makeStripeSig(payload, []byte(secret), tsUnix)
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationVerifyWebhookSig,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"payload":           string(payload),
+			"stripe_signature":  sigHeader,
+			"endpoint_secret":   secret,
+			"tolerance_seconds": int64(300),
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, true, resp.Output["valid"])
+	require.Equal(t, "evt_xyz", resp.Output["event_id"])
+	require.Equal(t, "payment_intent.succeeded", resp.Output["event_type"])
+}
+
+// silence unused json import (used by verify_webhook_signature impl) when tests
+// elsewhere don't reach json.Marshal.
 var _ = json.Marshal
-var _ = time.Now
