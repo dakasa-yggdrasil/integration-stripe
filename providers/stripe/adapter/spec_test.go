@@ -100,6 +100,32 @@ func TestExecute_CancelPaymentIntent(t *testing.T) {
 	require.Equal(t, "requested_by_customer", resp.Output["cancellation_reason"])
 }
 
+func TestExecute_CreateCustomer(t *testing.T) {
+	var seenIdempotencyKey string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/customers", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		seenIdempotencyKey = r.Header.Get("Idempotency-Key")
+		_, _ = w.Write([]byte(`{"id":"cus_abc","object":"customer","email":"host@dakasa.io","created":1700000000}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationCreateCustomer,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"email": "host@dakasa.io",
+			"name":  "Dakasa Host",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "cus_abc", resp.Output["customer_id"])
+	require.Equal(t, "create_customer_host@dakasa.io", seenIdempotencyKey)
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now
