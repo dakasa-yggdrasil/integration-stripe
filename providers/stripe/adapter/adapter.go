@@ -54,6 +54,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return listCharges(ctx, client, req)
 	case OperationCreatePayout:
 		return createPayout(ctx, client, req)
+	case OperationManageConnectAccount:
+		return manageConnectAccount(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}

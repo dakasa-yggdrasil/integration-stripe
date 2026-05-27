@@ -335,6 +335,65 @@ func TestExecute_CreatePayout(t *testing.T) {
 	require.Equal(t, "standard", resp.Output["method"])
 }
 
+func TestExecute_ManageConnectAccount_Create(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/accounts", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		_, _ = w.Write([]byte(`{"id":"acct_abc","type":"express","country":"BR","charges_enabled":false,"payouts_enabled":false,"details_submitted":false}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationManageConnectAccount,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input: map[string]any{
+			"operation": "create",
+			"type":      "express",
+			"country":   "BR",
+			"email":     "host@dakasa.io",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "acct_abc", resp.Output["account_id"])
+}
+
+func TestExecute_ManageConnectAccount_Get(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/accounts/acct_abc", r.URL.Path)
+		require.Equal(t, "GET", r.Method)
+		_, _ = w.Write([]byte(`{"id":"acct_abc","type":"express","country":"BR","charges_enabled":true,"payouts_enabled":true,"details_submitted":true}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationManageConnectAccount,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input:       map[string]any{"operation": "get", "account_id": "acct_abc"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, true, resp.Output["charges_enabled"])
+}
+
+func TestExecute_ManageConnectAccount_UnsupportedOperation(t *testing.T) {
+	client, _ := NewStripeClient("sk_test", "http://nowhere.invalid", StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	_, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationManageConnectAccount,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input:       map[string]any{"operation": "delete"},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported_operation")
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now
