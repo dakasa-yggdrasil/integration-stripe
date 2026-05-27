@@ -55,6 +55,27 @@ func TestExecute_CreatePaymentIntent(t *testing.T) {
 	require.Equal(t, "requires_payment_method", resp.Output["status"])
 }
 
+func TestExecute_ConfirmPaymentIntent(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/payment_intents/pi_abc/confirm", r.URL.Path)
+		_, _ = w.Write([]byte(`{"id":"pi_abc","status":"requires_action","next_action":{"redirect_to_url":{"url":"https://stripe.com/3ds"}}}`))
+	}))
+	defer ts.Close()
+	client, _ := NewStripeClient("sk_test", ts.URL, StripeAPIVersion)
+	restore := SetStripeClientForTest("dakasa", client)
+	defer restore()
+
+	resp, err := Execute(contract.AdapterExecuteIntegrationRequest{
+		Operation:   OperationConfirmPaymentIntent,
+		Integration: contract.IntegrationContext{InstanceID: "dakasa"},
+		Input:       map[string]any{"payment_intent_id": "pi_abc"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "pi_abc", resp.Output["payment_intent_id"])
+	require.Equal(t, "requires_action", resp.Output["status"])
+	require.NotNil(t, resp.Output["next_action"])
+}
+
 // silence unused json import until verify_webhook_signature lands in Task 32.
 var _ = json.Marshal
 var _ = time.Now

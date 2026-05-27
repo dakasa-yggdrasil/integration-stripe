@@ -34,9 +34,43 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 	switch op {
 	case OperationCreatePaymentIntent:
 		return createPaymentIntent(ctx, client, req)
+	case OperationConfirmPaymentIntent:
+		return confirmPaymentIntent(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
+}
+
+func confirmPaymentIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	id := stringOr(req.Input, "payment_intent_id")
+	if id == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("payment_intent_id required")
+	}
+	params := &stripe.PaymentIntentConfirmParams{}
+	if pm := stringOr(req.Input, "payment_method"); pm != "" {
+		params.PaymentMethod = stripe.String(pm)
+	}
+	if ru := stringOr(req.Input, "return_url"); ru != "" {
+		params.ReturnURL = stripe.String(ru)
+	}
+	if acc := stringOr(req.Input, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	idk := stringOr(req.Input, "idempotency_key")
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(idk, "confirm_pi", id))
+
+	pi, err := c.V1PaymentIntents.Confirm(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	out := map[string]any{
+		"payment_intent_id": pi.ID,
+		"status":            string(pi.Status),
+	}
+	if pi.NextAction != nil {
+		out["next_action"] = pi.NextAction
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
 }
 
 func createPaymentIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
