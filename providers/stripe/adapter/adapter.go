@@ -40,6 +40,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return cancelPaymentIntent(ctx, client, req)
 	case OperationCreateCustomer:
 		return createCustomer(ctx, client, req)
+	case OperationUpdateCustomer:
+		return updateCustomer(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -181,6 +183,43 @@ func createCustomer(ctx context.Context, c *stripe.Client, req contract.AdapterE
 		"customer_id": cust.ID,
 		"email":       cust.Email,
 		"created":     cust.Created,
+	}}, nil
+}
+
+func updateCustomer(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	id := stringOr(in, "customer_id")
+	if id == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("customer_id required")
+	}
+	params := &stripe.CustomerUpdateParams{}
+	if email := stringOr(in, "email"); email != "" {
+		params.Email = stripe.String(email)
+	}
+	if name := stringOr(in, "name"); name != "" {
+		params.Name = stripe.String(name)
+	}
+	if phone := stringOr(in, "phone"); phone != "" {
+		params.Phone = stripe.String(phone)
+	}
+	if md := metadataFromInput(in); len(md) > 0 {
+		params.Metadata = md
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	// Derive key from customer_id + sha256(email|name|phone) so a
+	// duplicate "update X to the same values" is idempotent.
+	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "update_customer", id,
+		stringOr(in, "email"), stringOr(in, "name"), stringOr(in, "phone")))
+
+	cust, err := c.V1Customers.Update(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"customer_id": cust.ID,
+		"updated":     true,
 	}}, nil
 }
 
