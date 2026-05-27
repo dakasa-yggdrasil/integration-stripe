@@ -16,7 +16,7 @@ import (
 func TestSpec_ProviderAndVersion(t *testing.T) {
 	require.Equal(t, "stripe", Provider)
 	require.Equal(t, "stripe", IntegrationType)
-	require.Equal(t, "2.2.1", AdapterVersion)
+	require.Equal(t, "2.2.2", AdapterVersion)
 	require.Equal(t, "2024-12-18.acacia", StripeAPIVersion)
 }
 

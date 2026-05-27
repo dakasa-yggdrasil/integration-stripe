@@ -5,6 +5,51 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] — 2026-05-27
+
+### Fixed
+
+- **Execute() unconditionally called clientForInstance with an empty
+  apiKey** — pre-existing structural bug surfaced during the cycle
+  #243 bridge sweep and deferred from v2.2.1 to a separate cycle.
+  `providers/stripe/adapter/adapter.go::Execute` invoked
+  `clientForInstance(req.Integration.InstanceID, "", "", StripeAPIVersion)`
+  with a hardcoded empty `apiKey`, so `NewStripeClient("")` returned
+  `"stripe api key is required"` and EVERY stripe write capability
+  (`ensure_customer`, `ensure_payment_intent`, `ensure_subscription`,
+  `ensure_webhook_endpoint`, `destroy_*`, plus the kept allowlisted
+  action helpers `create_refund` / `create_setup_intent` /
+  `create_payout` / `manage_connect_account`) failed at the apiKey
+  gate before reaching the Stripe HTTP boundary — regardless of
+  whether the v2.2.1 bridge fix had rehydrated credentials onto
+  `req.Integration.Spec.Credentials`.
+- Fix: Execute() now reads `stripe_api_key` from
+  `req.Integration.Spec.Credentials` and optional
+  `stripe_api_base_url` / `stripe_api_version` from
+  `req.Integration.Spec.Config`, threading all three into
+  `clientForInstance`. The credentials map is rehydrated upstream by
+  `buildExecuteRequest` (v2.2.1) from the wire-level
+  `integration.instance_spec.credentials` field. The `stripe_api_base_url`
+  config field doubles as an override hook for stripe-mock /
+  httptest.Server / private Stripe-API-compatible endpoints
+  (Lego-principle aligned — does not couple to api.stripe.com).
+- Covered by `TestExecute_ReadsAPIKeyFromCredentials` and
+  `TestExecute_MissingAPIKeyRejected` in
+  `providers/stripe/adapter/execute_credentials_test.go`. The first
+  test reproduces the exact `stripe api key is required` failure on
+  unfixed code and asserts `Authorization: Bearer <canary>` reaches
+  the in-process Stripe HTTP server after the fix.
+- `AdapterVersion` bumped 2.2.1 → 2.2.2 (patch — no API surface
+  change; the credential is one already declared in the v1.0.0
+  `credential_schema`).
+
+### Closes
+
+- The `DONE_WITH_CONCERNS` note from v2.2.1 ("`adapter.Execute` /
+  `clientForInstance` carry a pre-existing structural bug independent
+  of the bridge fix") — bridge fix + Execute() rehydration now
+  compose to make stripe writes work end-to-end in production.
+
 ## [2.2.1] — 2026-05-27
 
 ### Fixed
