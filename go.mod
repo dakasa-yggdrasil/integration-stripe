@@ -3,12 +3,13 @@ module github.com/dakasa-yggdrasil/integration-stripe
 go 1.25.0
 
 require (
-	github.com/dakasa-yggdrasil/yggdrasil-sdk-go v0.7.0
+	github.com/dakasa-yggdrasil/yggdrasil-sdk-go v0.8.0
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	github.com/stripe/stripe-go/v83 v83.1.0
 	go.uber.org/zap v1.27.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -25,5 +26,4 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
