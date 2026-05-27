@@ -5,6 +5,34 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] — 2026-05-27
+
+### Changed
+
+- Bump yggdrasil-sdk-go v0.6.0 → v0.7.0 to pick up the public
+  `reconcile.Dispatch` API.
+- Production runtime migrated from `adapter.Execute` switch to
+  `reconcile.Dispatch`. `cmd/adapter/main.go` now calls
+  `WireReconcilers(a, defaultInstanceID(instances))` BEFORE the
+  `Register("execute", ...)` chain so the SDK dispatch table owns
+  routing for `ensure_/observe_/destroy_` ops. The legacy switch
+  remains as the fallback path for allowlisted action helpers
+  (`create_refund`, `create_setup_intent`, `create_payout`,
+  `manage_connect_account`) and `verify_webhook_signature`, which
+  are not registered through `RegisterReconciler`.
+- §6.5 mutation event auto-emission is now LIVE for production
+  traffic (previously TEST-ONLY) when `YGGDRASIL_CORE_URL`
+  + `YGGDRASIL_RUN_TOKEN` are wired in the cluster manifest.
+- `ExecuteHandler` signature now accepts `*adapter.Adapter`
+  alongside the logger and instances map; the bridge re-wraps the
+  raw observed-state JSON returned by the SDK in the legacy
+  `rpcResponse{ok,data}` envelope so callers see the same wire
+  shape they always have.
+- `reconcile.go` dispatch helpers extract `instance_id` from the
+  input payload (lifted by the ExecuteHandler bridge from
+  `integration.instance_id`) per-call, with the registration-time
+  fallback preserving single-instance test flows.
+
 ## [2.1.0] — 2026-05-27
 
 ### Added
