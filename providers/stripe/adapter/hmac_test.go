@@ -31,3 +31,36 @@ func TestVerifyStripe_KnownGoodSignature(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ts, gotTS)
 }
+
+func TestVerifyStripe_TamperedBodyRejected(t *testing.T) {
+	payload := []byte(`{"id":"evt_1","type":"payment_intent.succeeded"}`)
+	secret := []byte("whsec_test_002")
+	ts := time.Now().Unix()
+	header := makeStripeSig(payload, secret, ts)
+
+	tampered := append([]byte(nil), payload...)
+	tampered[1] = 'X' // flip one byte
+
+	_, err := VerifySignature(tampered, header, secret, 300)
+	require.ErrorIs(t, err, ErrSignatureMismatch)
+}
+
+func TestVerifyStripe_ExpiredTimestamp(t *testing.T) {
+	payload := []byte(`{"id":"evt_2"}`)
+	secret := []byte("whsec_test_003")
+	ts := time.Now().Unix() - 3600 // 1 h in the past
+	header := makeStripeSig(payload, secret, ts)
+
+	_, err := VerifySignature(payload, header, secret, 300)
+	require.ErrorIs(t, err, ErrSignatureExpired)
+}
+
+func TestVerifyStripe_FutureTimestamp(t *testing.T) {
+	payload := []byte(`{"id":"evt_3"}`)
+	secret := []byte("whsec_test_004")
+	ts := time.Now().Unix() + 3600 // 1 h in the future
+	header := makeStripeSig(payload, secret, ts)
+
+	_, err := VerifySignature(payload, header, secret, 300)
+	require.ErrorIs(t, err, ErrSignatureExpired)
+}
