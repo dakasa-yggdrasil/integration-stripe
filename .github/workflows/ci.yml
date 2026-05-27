@@ -16,8 +16,13 @@ jobs:
         image: stripemock/stripe-mock:latest
         ports:
           - 12111:12111
+        # stripe-mock returns HTTP 401 on unauthenticated probes, which made
+        # the previous `wget -qO- ...` healthcheck exit non-zero and the
+        # service container never reached "healthy". Send the dummy test
+        # bearer token (any sk_test_* string is accepted by stripe-mock) so
+        # /v1/charges returns 200 and wget exits 0.
         options: >-
-          --health-cmd="wget -qO- http://localhost:12111/v1/charges?limit=1 || exit 1"
+          --health-cmd="wget -qO- --header='Authorization: Bearer sk_test_ci' http://localhost:12111/v1/charges?limit=1 || exit 1"
           --health-interval=5s
           --health-timeout=3s
           --health-retries=10
