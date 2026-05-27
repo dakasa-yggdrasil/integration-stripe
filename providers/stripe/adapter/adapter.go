@@ -46,6 +46,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return createSubscription(ctx, client, req)
 	case OperationCancelSubscription:
 		return cancelSubscription(ctx, client, req)
+	case OperationCreateRefund:
+		return createRefund(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -283,6 +285,52 @@ func createSubscription(ctx context.Context, c *stripe.Client, req contract.Adap
 	}
 	if sub.LatestInvoice != nil {
 		out["latest_invoice"] = sub.LatestInvoice.ID
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
+}
+
+func createRefund(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	charge := stringOr(in, "charge")
+	pi := stringOr(in, "payment_intent")
+	if charge == "" && pi == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("charge or payment_intent required")
+	}
+	params := &stripe.RefundCreateParams{}
+	if charge != "" {
+		params.Charge = stripe.String(charge)
+	}
+	if pi != "" {
+		params.PaymentIntent = stripe.String(pi)
+	}
+	amount := intFromInput(in, "amount")
+	if amount > 0 {
+		params.Amount = stripe.Int64(amount)
+	}
+	if reason := stringOr(in, "reason"); reason != "" {
+		params.Reason = stripe.String(reason)
+	}
+	if md := metadataFromInput(in); len(md) > 0 {
+		params.Metadata = md
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	idk := stringOr(in, "idempotency_key")
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(idk, "refund",
+		charge, fmt.Sprintf("%d", amount)))
+
+	r, err := c.V1Refunds.Create(ctx, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	out := map[string]any{
+		"refund_id": r.ID,
+		"status":    string(r.Status),
+		"amount":    r.Amount,
+	}
+	if r.Charge != nil {
+		out["charge"] = r.Charge.ID
 	}
 	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
 }
