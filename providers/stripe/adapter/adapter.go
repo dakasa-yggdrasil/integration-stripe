@@ -38,6 +38,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return confirmPaymentIntent(ctx, client, req)
 	case OperationCancelPaymentIntent:
 		return cancelPaymentIntent(ctx, client, req)
+	case OperationCreateCustomer:
+		return createCustomer(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -142,6 +144,64 @@ func cancelPaymentIntent(ctx context.Context, c *stripe.Client, req contract.Ada
 		"status":              string(pi.Status),
 		"cancellation_reason": string(pi.CancellationReason),
 	}}, nil
+}
+
+func createCustomer(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	email := stringOr(in, "email")
+	if email == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("email required")
+	}
+	params := &stripe.CustomerCreateParams{
+		Email: stripe.String(email),
+	}
+	if name := stringOr(in, "name"); name != "" {
+		params.Name = stripe.String(name)
+	}
+	if phone := stringOr(in, "phone"); phone != "" {
+		params.Phone = stripe.String(phone)
+	}
+	if md := metadataFromInput(in); len(md) > 0 {
+		params.Metadata = md
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	idk := stringOr(in, "idempotency_key")
+	if idk == "" {
+		idk = "create_customer_" + email // matches enterprise-payments-api convention
+	}
+	params.SetIdempotencyKey(idk)
+
+	cust, err := c.V1Customers.Create(ctx, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"customer_id": cust.ID,
+		"email":       cust.Email,
+		"created":     cust.Created,
+	}}, nil
+}
+
+// metadataFromInput coerces input["metadata"] into a string-keyed
+// string map. Stripe's API rejects non-string values, so anything
+// that doesn't fit is stringified via fmt.Sprint.
+func metadataFromInput(in map[string]any) map[string]string {
+	raw, ok := in["metadata"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		switch s := v.(type) {
+		case string:
+			out[k] = s
+		default:
+			out[k] = fmt.Sprint(v)
+		}
+	}
+	return out
 }
 
 // verifyWebhookSig is implemented in Task 32 (verify_webhook_signature
