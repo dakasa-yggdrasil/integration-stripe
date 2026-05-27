@@ -52,6 +52,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return createSetupIntent(ctx, client, req)
 	case OperationListCharges:
 		return listCharges(ctx, client, req)
+	case OperationCreatePayout:
+		return createPayout(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -433,6 +435,45 @@ func listCharges(ctx context.Context, c *stripe.Client, req contract.AdapterExec
 	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
 		"charges":  out,
 		"has_more": stoppedEarly,
+	}}, nil
+}
+
+func createPayout(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	amount := intFromInput(in, "amount")
+	currency := stringOr(in, "currency")
+	if amount <= 0 || currency == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("amount and currency required")
+	}
+	params := &stripe.PayoutCreateParams{
+		Amount:   stripe.Int64(amount),
+		Currency: stripe.String(currency),
+	}
+	method := stringOr(in, "method")
+	if method == "" {
+		method = "standard"
+	}
+	params.Method = stripe.String(method)
+	if md := metadataFromInput(in); len(md) > 0 {
+		params.Metadata = md
+	}
+	acct := stringOr(in, "stripe_account")
+	if acct != "" {
+		params.SetStripeAccount(acct)
+	}
+	idk := stringOr(in, "idempotency_key")
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(idk, "create_payout",
+		acct, fmt.Sprintf("%d", amount), currency))
+
+	po, err := c.V1Payouts.Create(ctx, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"payout_id":    po.ID,
+		"status":       string(po.Status),
+		"arrival_date": po.ArrivalDate,
+		"method":       string(po.Method),
 	}}, nil
 }
 
