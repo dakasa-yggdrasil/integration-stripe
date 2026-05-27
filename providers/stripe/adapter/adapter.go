@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -12,14 +13,18 @@ import (
 	"github.com/dakasa-yggdrasil/integration-stripe/family/contract"
 )
 
-// Execute dispatches one adapter capability call. Both the SDK execute
-// handler and the verify_webhook_signature path delegate here. Returns
-// a Response with Output populated; errors are surfaced as Go errors
-// (the message layer translates them into rpc failure envelopes).
+// Execute dispatches one adapter capability call. v2.0.0 routes canonical
+// ensure_/observe_/destroy_ ops plus the kept allowlisted action helpers.
+// Pre-convention names are translated through ResolveOperation and logged
+// once per invocation as WARN during the compat window (SDK v0.5.x).
 func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
-	op := NormalizeExecuteOperation(req.Operation, req.Capability)
-	if op == "" {
+	rawOp := NormalizeExecuteOperation(req.Operation, req.Capability)
+	if rawOp == "" {
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("operation is required")
+	}
+	op, legacy := ResolveOperation(rawOp)
+	if legacy {
+		log.Printf("WARN stripe: deprecated capability name %q invoked; use %q (compat shim, removed in v0.6.0)", rawOp, op)
 	}
 	instance := req.Integration.InstanceID
 	if instance == "" {
@@ -43,26 +48,45 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 	}
 
 	switch op {
-	case OperationCreatePaymentIntent:
-		return createPaymentIntent(ctx, client, req)
-	case OperationConfirmPaymentIntent:
-		return confirmPaymentIntent(ctx, client, req)
-	case OperationCancelPaymentIntent:
-		return cancelPaymentIntent(ctx, client, req)
-	case OperationCreateCustomer:
-		return createCustomer(ctx, client, req)
-	case OperationUpdateCustomer:
-		return updateCustomer(ctx, client, req)
-	case OperationCreateSubscription:
-		return createSubscription(ctx, client, req)
-	case OperationCancelSubscription:
-		return cancelSubscription(ctx, client, req)
+	// payment_intent triple.
+	case OperationEnsurePaymentIntent:
+		return ensurePaymentIntent(ctx, client, req)
+	case OperationObservePaymentIntents:
+		return observePaymentIntents(ctx, client, req)
+	case OperationDestroyPaymentIntent:
+		return destroyPaymentIntent(ctx, client, req)
+	// customer triple.
+	case OperationEnsureCustomer:
+		return ensureCustomer(ctx, client, req)
+	case OperationObserveCustomers:
+		return observeCustomers(ctx, client, req)
+	case OperationDestroyCustomer:
+		return destroyCustomer(ctx, client, req)
+	// subscription triple.
+	case OperationEnsureSubscription:
+		return ensureSubscription(ctx, client, req)
+	case OperationObserveSubscriptions:
+		return observeSubscriptions(ctx, client, req)
+	case OperationDestroySubscription:
+		return destroySubscription(ctx, client, req)
+	// charge read.
+	case OperationObserveCharges:
+		return observeCharges(ctx, client, req)
+	// balance read.
+	case OperationObserveBalance:
+		return observeBalance(ctx, client, req)
+	// webhook_endpoint triple.
+	case OperationEnsureWebhookEndpoint:
+		return ensureWebhookEndpoint(ctx, client, req)
+	case OperationObserveWebhookEndpoints:
+		return observeWebhookEndpoints(ctx, client, req)
+	case OperationDestroyWebhookEndpoint:
+		return destroyWebhookEndpoint(ctx, client, req)
+	// Allowlisted action helpers.
 	case OperationCreateRefund:
 		return createRefund(ctx, client, req)
 	case OperationCreateSetupIntent:
 		return createSetupIntent(ctx, client, req)
-	case OperationListCharges:
-		return listCharges(ctx, client, req)
 	case OperationCreatePayout:
 		return createPayout(ctx, client, req)
 	case OperationManageConnectAccount:
@@ -70,6 +94,68 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
+}
+
+// ensurePaymentIntent creates or confirms a Stripe PaymentIntent.
+// Collapses the pre-convention create_/confirm_ pair: when input.confirm
+// is true (or a payment_intent_id is present), the handler treats the
+// call as "ensure this intent exists in confirmed state."
+func ensurePaymentIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	id := stringOr(in, "payment_intent_id")
+	confirm := boolFromInput(in, "confirm")
+
+	// When a payment_intent_id is provided, treat as confirm path (the
+	// historical confirm_payment_intent semantic). If no id is provided
+	// but confirm=true, callers MUST pass amount+currency so we can
+	// create-then-confirm. Otherwise act as plain create.
+	if id != "" {
+		return confirmPaymentIntent(ctx, c, req)
+	}
+
+	amount := intFromInput(in, "amount")
+	currency := stringOr(in, "currency")
+	if amount <= 0 || strings.TrimSpace(currency) == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("amount and currency are required")
+	}
+
+	params := &stripe.PaymentIntentCreateParams{
+		Amount:   stripe.Int64(amount),
+		Currency: stripe.String(currency),
+	}
+	if cust := stringOr(in, "customer"); cust != "" {
+		params.Customer = stripe.String(cust)
+	}
+	if pm := stringOr(in, "payment_method"); pm != "" {
+		params.PaymentMethod = stripe.String(pm)
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	if confirm {
+		params.Confirm = stripe.Bool(true)
+	}
+	idk := stringOr(in, "idempotency_key")
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(idk, "ensure_pi",
+		fmt.Sprintf("%d", amount), currency,
+		stringOr(in, "customer"),
+	))
+
+	pi, err := c.V1PaymentIntents.Create(ctx, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	out := map[string]any{
+		"payment_intent_id": pi.ID,
+		"client_secret":     pi.ClientSecret,
+		"status":            string(pi.Status),
+		"amount":            pi.Amount,
+		"currency":          pi.Currency,
+	}
+	if pi.NextAction != nil {
+		out["next_action"] = pi.NextAction
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
 }
 
 func confirmPaymentIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
@@ -104,52 +190,83 @@ func confirmPaymentIntent(ctx context.Context, c *stripe.Client, req contract.Ad
 	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
 }
 
-func createPaymentIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+// observePaymentIntents lists PIs or retrieves one when filter.id is set.
+func observePaymentIntents(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
 	in := req.Input
-	amount := intFromInput(in, "amount")
-	currency := stringOr(in, "currency")
-	if amount <= 0 || strings.TrimSpace(currency) == "" {
-		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("amount and currency are required")
+	if id := stringOr(in, "id"); id != "" {
+		params := &stripe.PaymentIntentRetrieveParams{}
+		if acc := stringOr(in, "stripe_account"); acc != "" {
+			params.SetStripeAccount(acc)
+		}
+		pi, err := c.V1PaymentIntents.Retrieve(ctx, id, params)
+		if err != nil {
+			return contract.AdapterExecuteIntegrationResponse{}, err
+		}
+		return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+			"payment_intent_id": pi.ID,
+			"status":            string(pi.Status),
+			"amount":            pi.Amount,
+			"currency":          pi.Currency,
+		}}, nil
 	}
-
-	params := &stripe.PaymentIntentCreateParams{
-		Amount:   stripe.Int64(amount),
-		Currency: stripe.String(currency),
+	limit := intFromInput(in, "limit")
+	if limit <= 0 {
+		limit = 10
 	}
+	if limit > 100 {
+		limit = 100
+	}
+	params := &stripe.PaymentIntentListParams{}
+	params.Limit = stripe.Int64(limit)
 	if cust := stringOr(in, "customer"); cust != "" {
 		params.Customer = stripe.String(cust)
-	}
-	if pm := stringOr(in, "payment_method"); pm != "" {
-		params.PaymentMethod = stripe.String(pm)
 	}
 	if acc := stringOr(in, "stripe_account"); acc != "" {
 		params.SetStripeAccount(acc)
 	}
-	idk := stringOr(in, "idempotency_key")
-	params.SetIdempotencyKey(idempotencyKeyOrDerived(idk, "create_pi",
-		fmt.Sprintf("%d", amount), currency,
-		stringOr(in, "customer"),
-	))
-
-	pi, err := c.V1PaymentIntents.Create(ctx, params)
-	if err != nil {
-		return contract.AdapterExecuteIntegrationResponse{}, err
+	out := make([]map[string]any, 0, limit)
+	iter := c.V1PaymentIntents.List(ctx, params)
+	var seqErr error
+	var count int64
+	stoppedEarly := false
+	iter(func(pi *stripe.PaymentIntent, err error) bool {
+		if err != nil {
+			seqErr = err
+			return false
+		}
+		if pi == nil {
+			return true
+		}
+		if count >= limit {
+			stoppedEarly = true
+			return false
+		}
+		out = append(out, map[string]any{
+			"id":       pi.ID,
+			"amount":   pi.Amount,
+			"currency": pi.Currency,
+			"status":   string(pi.Status),
+		})
+		count++
+		return true
+	})
+	if seqErr != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, seqErr
 	}
-	return contract.AdapterExecuteIntegrationResponse{
-		Output: map[string]any{
-			"payment_intent_id": pi.ID,
-			"client_secret":     pi.ClientSecret,
-			"status":            string(pi.Status),
-			"amount":            pi.Amount,
-			"currency":          pi.Currency,
-		},
-	}, nil
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"items":    out,
+		"has_more": stoppedEarly,
+	}}, nil
 }
 
-func cancelPaymentIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+func destroyPaymentIntent(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
 	id := stringOr(req.Input, "payment_intent_id")
 	if id == "" {
-		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("payment_intent_id required")
+		// Accept "ref" for canonical Destroy(ctx, ref) shape via SDK.
+		id = stringOr(req.Input, "ref")
+	}
+	if id == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("payment_intent_id (or ref) required")
 	}
 	params := &stripe.PaymentIntentCancelParams{}
 	if reason := stringOr(req.Input, "cancellation_reason"); reason != "" {
@@ -158,9 +275,7 @@ func cancelPaymentIntent(ctx context.Context, c *stripe.Client, req contract.Ada
 	if acc := stringOr(req.Input, "stripe_account"); acc != "" {
 		params.SetStripeAccount(acc)
 	}
-	// Always derive the same key for a given PI so a duplicate cancel
-	// is no-op even if no idempotency_key is passed.
-	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "cancel_pi", id))
+	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "destroy_pi", id))
 
 	pi, err := c.V1PaymentIntents.Cancel(ctx, id, params)
 	if err != nil {
@@ -171,6 +286,18 @@ func cancelPaymentIntent(ctx context.Context, c *stripe.Client, req contract.Ada
 		"status":              string(pi.Status),
 		"cancellation_reason": string(pi.CancellationReason),
 	}}, nil
+}
+
+// ensureCustomer creates a Customer when email is supplied and no
+// customer_id is present, updates by id when customer_id is supplied.
+// Collapses create_customer + update_customer behind one canonical name.
+func ensureCustomer(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	id := stringOr(in, "customer_id")
+	if id != "" {
+		return updateCustomer(ctx, c, req)
+	}
+	return createCustomer(ctx, c, req)
 }
 
 func createCustomer(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
@@ -248,6 +375,101 @@ func updateCustomer(ctx context.Context, c *stripe.Client, req contract.AdapterE
 	}}, nil
 }
 
+func observeCustomers(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	if id := stringOr(in, "id"); id != "" {
+		params := &stripe.CustomerRetrieveParams{}
+		if acc := stringOr(in, "stripe_account"); acc != "" {
+			params.SetStripeAccount(acc)
+		}
+		cust, err := c.V1Customers.Retrieve(ctx, id, params)
+		if err != nil {
+			return contract.AdapterExecuteIntegrationResponse{}, err
+		}
+		return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+			"customer_id": cust.ID,
+			"email":       cust.Email,
+		}}, nil
+	}
+	limit := intFromInput(in, "limit")
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	params := &stripe.CustomerListParams{}
+	params.Limit = stripe.Int64(limit)
+	if email := stringOr(in, "email"); email != "" {
+		params.Email = stripe.String(email)
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	out := make([]map[string]any, 0, limit)
+	iter := c.V1Customers.List(ctx, params)
+	var seqErr error
+	var count int64
+	stoppedEarly := false
+	iter(func(cu *stripe.Customer, err error) bool {
+		if err != nil {
+			seqErr = err
+			return false
+		}
+		if cu == nil {
+			return true
+		}
+		if count >= limit {
+			stoppedEarly = true
+			return false
+		}
+		out = append(out, map[string]any{
+			"id":    cu.ID,
+			"email": cu.Email,
+		})
+		count++
+		return true
+	})
+	if seqErr != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, seqErr
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"items":    out,
+		"has_more": stoppedEarly,
+	}}, nil
+}
+
+func destroyCustomer(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	id := stringOr(req.Input, "customer_id")
+	if id == "" {
+		id = stringOr(req.Input, "ref")
+	}
+	if id == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("customer_id (or ref) required")
+	}
+	params := &stripe.CustomerDeleteParams{}
+	if acc := stringOr(req.Input, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	cust, err := c.V1Customers.Delete(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"customer_id": cust.ID,
+		"deleted":     true,
+	}}, nil
+}
+
+// ensureSubscription: PATCH when subscription_id supplied, POST otherwise.
+func ensureSubscription(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	if id := stringOr(in, "subscription_id"); id != "" {
+		return updateSubscription(ctx, c, req, id)
+	}
+	return createSubscription(ctx, c, req)
+}
+
 func createSubscription(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
 	in := req.Input
 	customer := stringOr(in, "customer")
@@ -306,6 +528,371 @@ func createSubscription(ctx context.Context, c *stripe.Client, req contract.Adap
 		out["latest_invoice"] = sub.LatestInvoice.ID
 	}
 	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
+}
+
+func updateSubscription(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest, id string) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	params := &stripe.SubscriptionUpdateParams{}
+	if boolFromInput(in, "cancel_at_period_end") {
+		params.CancelAtPeriodEnd = stripe.Bool(true)
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "update_sub", id))
+	sub, err := c.V1Subscriptions.Update(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: subOutput(sub)}, nil
+}
+
+func observeSubscriptions(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	if id := stringOr(in, "id"); id != "" {
+		params := &stripe.SubscriptionRetrieveParams{}
+		if acc := stringOr(in, "stripe_account"); acc != "" {
+			params.SetStripeAccount(acc)
+		}
+		sub, err := c.V1Subscriptions.Retrieve(ctx, id, params)
+		if err != nil {
+			return contract.AdapterExecuteIntegrationResponse{}, err
+		}
+		return contract.AdapterExecuteIntegrationResponse{Output: subOutput(sub)}, nil
+	}
+	limit := intFromInput(in, "limit")
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	params := &stripe.SubscriptionListParams{}
+	params.Limit = stripe.Int64(limit)
+	if cust := stringOr(in, "customer"); cust != "" {
+		params.Customer = stripe.String(cust)
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	out := make([]map[string]any, 0, limit)
+	iter := c.V1Subscriptions.List(ctx, params)
+	var seqErr error
+	var count int64
+	stoppedEarly := false
+	iter(func(sub *stripe.Subscription, err error) bool {
+		if err != nil {
+			seqErr = err
+			return false
+		}
+		if sub == nil {
+			return true
+		}
+		if count >= limit {
+			stoppedEarly = true
+			return false
+		}
+		out = append(out, map[string]any{
+			"id":     sub.ID,
+			"status": string(sub.Status),
+		})
+		count++
+		return true
+	})
+	if seqErr != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, seqErr
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"items":    out,
+		"has_more": stoppedEarly,
+	}}, nil
+}
+
+func destroySubscription(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	id := stringOr(in, "subscription_id")
+	if id == "" {
+		id = stringOr(in, "ref")
+	}
+	if id == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("subscription_id (or ref) required")
+	}
+	// When cancel_at_period_end=true Stripe expects POST /v1/subscriptions/{id}
+	// (update). The "immediate" path is DELETE /v1/subscriptions/{id}.
+	atPeriodEnd := boolFromInput(in, "cancel_at_period_end")
+	if atPeriodEnd {
+		return updateSubscription(ctx, c, req, id)
+	}
+
+	params := &stripe.SubscriptionCancelParams{}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "destroy_sub_now", id))
+	sub, err := c.V1Subscriptions.Cancel(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: subOutput(sub)}, nil
+}
+
+func subOutput(sub *stripe.Subscription) map[string]any {
+	return map[string]any{
+		"subscription_id":      sub.ID,
+		"status":               string(sub.Status),
+		"cancel_at_period_end": sub.CancelAtPeriodEnd,
+		"canceled_at":          sub.CanceledAt,
+	}
+}
+
+// observeCharges replaces list_charges. Same upstream semantic
+// (GET /v1/charges with filter), under the canonical name.
+func observeCharges(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	limit := intFromInput(in, "limit")
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	params := &stripe.ChargeListParams{}
+	params.Limit = stripe.Int64(limit)
+	if cust := stringOr(in, "customer"); cust != "" {
+		params.Customer = stripe.String(cust)
+	}
+	if pi := stringOr(in, "payment_intent"); pi != "" {
+		params.PaymentIntent = stripe.String(pi)
+	}
+	if cursor := stringOr(in, "starting_after"); cursor != "" {
+		params.StartingAfter = stripe.String(cursor)
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+
+	out := make([]map[string]any, 0, limit)
+	iter := c.V1Charges.List(ctx, params)
+	count := int64(0)
+	stoppedEarly := false
+	var seqErr error
+	iter(func(charge *stripe.Charge, err error) bool {
+		if err != nil {
+			seqErr = err
+			return false
+		}
+		if charge == nil {
+			return true
+		}
+		if count >= limit {
+			stoppedEarly = true
+			return false
+		}
+		out = append(out, map[string]any{
+			"id":       charge.ID,
+			"amount":   charge.Amount,
+			"currency": charge.Currency,
+			"status":   string(charge.Status),
+		})
+		count++
+		return true
+	})
+	if seqErr != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, seqErr
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"items":    out,
+		"has_more": stoppedEarly,
+	}}, nil
+}
+
+// observeBalance wraps GET /v1/balance. The Stripe Balance object is a
+// singleton per account (no list endpoint) — observe_balance returns
+// the current snapshot.
+func observeBalance(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	params := &stripe.BalanceRetrieveParams{}
+	if acc := stringOr(req.Input, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	bal, err := c.V1Balance.Retrieve(ctx, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	available := make([]map[string]any, 0, len(bal.Available))
+	for _, a := range bal.Available {
+		available = append(available, map[string]any{
+			"amount":   a.Amount,
+			"currency": string(a.Currency),
+		})
+	}
+	pending := make([]map[string]any, 0, len(bal.Pending))
+	for _, p := range bal.Pending {
+		pending = append(pending, map[string]any{
+			"amount":   p.Amount,
+			"currency": string(p.Currency),
+		})
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"available": available,
+		"pending":   pending,
+	}}, nil
+}
+
+// ensureWebhookEndpoint: POST when no id, PATCH when id present.
+func ensureWebhookEndpoint(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	if id := stringOr(in, "id"); id != "" {
+		return updateWebhookEndpoint(ctx, c, req, id)
+	}
+	url := stringOr(in, "url")
+	if url == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("url required for webhook_endpoint")
+	}
+	events := stringSliceFromInput(in, "enabled_events")
+	if len(events) == 0 {
+		events = []string{"*"}
+	}
+	params := &stripe.WebhookEndpointCreateParams{
+		URL:           stripe.String(url),
+		EnabledEvents: stripe.StringSlice(events),
+	}
+	if desc := stringOr(in, "description"); desc != "" {
+		params.Description = stripe.String(desc)
+	}
+	if md := metadataFromInput(in); len(md) > 0 {
+		params.Metadata = md
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(stringOr(in, "idempotency_key"), "ensure_we", url))
+
+	we, err := c.V1WebhookEndpoints.Create(ctx, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"id":             we.ID,
+		"url":            we.URL,
+		"status":         string(we.Status),
+		"enabled_events": we.EnabledEvents,
+		"secret":         we.Secret,
+	}}, nil
+}
+
+func updateWebhookEndpoint(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest, id string) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	params := &stripe.WebhookEndpointUpdateParams{}
+	if url := stringOr(in, "url"); url != "" {
+		params.URL = stripe.String(url)
+	}
+	if events := stringSliceFromInput(in, "enabled_events"); len(events) > 0 {
+		params.EnabledEvents = stripe.StringSlice(events)
+	}
+	if desc := stringOr(in, "description"); desc != "" {
+		params.Description = stripe.String(desc)
+	}
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "update_we", id))
+	we, err := c.V1WebhookEndpoints.Update(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"id":             we.ID,
+		"url":            we.URL,
+		"status":         string(we.Status),
+		"enabled_events": we.EnabledEvents,
+	}}, nil
+}
+
+func observeWebhookEndpoints(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	in := req.Input
+	if id := stringOr(in, "id"); id != "" {
+		params := &stripe.WebhookEndpointRetrieveParams{}
+		if acc := stringOr(in, "stripe_account"); acc != "" {
+			params.SetStripeAccount(acc)
+		}
+		we, err := c.V1WebhookEndpoints.Retrieve(ctx, id, params)
+		if err != nil {
+			return contract.AdapterExecuteIntegrationResponse{}, err
+		}
+		return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+			"id":             we.ID,
+			"url":            we.URL,
+			"status":         string(we.Status),
+			"enabled_events": we.EnabledEvents,
+		}}, nil
+	}
+	limit := intFromInput(in, "limit")
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	params := &stripe.WebhookEndpointListParams{}
+	params.Limit = stripe.Int64(limit)
+	if acc := stringOr(in, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	out := make([]map[string]any, 0, limit)
+	iter := c.V1WebhookEndpoints.List(ctx, params)
+	var seqErr error
+	var count int64
+	stoppedEarly := false
+	iter(func(we *stripe.WebhookEndpoint, err error) bool {
+		if err != nil {
+			seqErr = err
+			return false
+		}
+		if we == nil {
+			return true
+		}
+		if count >= limit {
+			stoppedEarly = true
+			return false
+		}
+		out = append(out, map[string]any{
+			"id":             we.ID,
+			"url":            we.URL,
+			"status":         string(we.Status),
+			"enabled_events": we.EnabledEvents,
+		})
+		count++
+		return true
+	})
+	if seqErr != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, seqErr
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"items":    out,
+		"has_more": stoppedEarly,
+	}}, nil
+}
+
+func destroyWebhookEndpoint(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	id := stringOr(req.Input, "id")
+	if id == "" {
+		id = stringOr(req.Input, "ref")
+	}
+	if id == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("webhook_endpoint id (or ref) required")
+	}
+	params := &stripe.WebhookEndpointDeleteParams{}
+	if acc := stringOr(req.Input, "stripe_account"); acc != "" {
+		params.SetStripeAccount(acc)
+	}
+	we, err := c.V1WebhookEndpoints.Delete(ctx, id, params)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"id":      we.ID,
+		"deleted": true,
+	}}, nil
 }
 
 func createRefund(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
@@ -390,67 +977,6 @@ func createSetupIntent(ctx context.Context, c *stripe.Client, req contract.Adapt
 	}}, nil
 }
 
-func listCharges(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
-	in := req.Input
-	limit := intFromInput(in, "limit")
-	if limit <= 0 {
-		limit = 10
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	params := &stripe.ChargeListParams{}
-	params.Limit = stripe.Int64(limit)
-	if cust := stringOr(in, "customer"); cust != "" {
-		params.Customer = stripe.String(cust)
-	}
-	if pi := stringOr(in, "payment_intent"); pi != "" {
-		params.PaymentIntent = stripe.String(pi)
-	}
-	if cursor := stringOr(in, "starting_after"); cursor != "" {
-		params.StartingAfter = stripe.String(cursor)
-	}
-	if acc := stringOr(in, "stripe_account"); acc != "" {
-		params.SetStripeAccount(acc)
-	}
-
-	out := make([]map[string]any, 0, limit)
-	iter := c.V1Charges.List(ctx, params)
-	count := int64(0)
-	stoppedEarly := false
-	var seqErr error
-	iter(func(charge *stripe.Charge, err error) bool {
-		if err != nil {
-			seqErr = err
-			return false
-		}
-		if charge == nil {
-			return true
-		}
-		if count >= limit {
-			stoppedEarly = true
-			return false
-		}
-		out = append(out, map[string]any{
-			"id":       charge.ID,
-			"amount":   charge.Amount,
-			"currency": charge.Currency,
-			"status":   string(charge.Status),
-		})
-		count++
-		return true
-	})
-	if seqErr != nil {
-		return contract.AdapterExecuteIntegrationResponse{}, seqErr
-	}
-	// stoppedEarly=true means there was at least one more item available
-	// upstream when we hit our cap. Otherwise the upstream is exhausted.
-	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
-		"charges":  out,
-		"has_more": stoppedEarly,
-	}}, nil
-}
-
 func createPayout(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
 	in := req.Input
 	amount := intFromInput(in, "amount")
@@ -498,51 +1024,6 @@ func boolFromInput(m map[string]any, key string) bool {
 	return false
 }
 
-func cancelSubscription(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
-	in := req.Input
-	id := stringOr(in, "subscription_id")
-	if id == "" {
-		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("subscription_id required")
-	}
-	// When cancel_at_period_end=true Stripe expects POST /v1/subscriptions/{id}
-	// (update). The "immediate" path is DELETE /v1/subscriptions/{id}.
-	atPeriodEnd := boolFromInput(in, "cancel_at_period_end")
-	if atPeriodEnd {
-		params := &stripe.SubscriptionUpdateParams{
-			CancelAtPeriodEnd: stripe.Bool(true),
-		}
-		if acc := stringOr(in, "stripe_account"); acc != "" {
-			params.SetStripeAccount(acc)
-		}
-		params.SetIdempotencyKey(idempotencyKeyOrDerived("", "cancel_sub_period_end", id))
-		sub, err := c.V1Subscriptions.Update(ctx, id, params)
-		if err != nil {
-			return contract.AdapterExecuteIntegrationResponse{}, err
-		}
-		return contract.AdapterExecuteIntegrationResponse{Output: subOutput(sub)}, nil
-	}
-
-	params := &stripe.SubscriptionCancelParams{}
-	if acc := stringOr(in, "stripe_account"); acc != "" {
-		params.SetStripeAccount(acc)
-	}
-	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "cancel_sub_now", id))
-	sub, err := c.V1Subscriptions.Cancel(ctx, id, params)
-	if err != nil {
-		return contract.AdapterExecuteIntegrationResponse{}, err
-	}
-	return contract.AdapterExecuteIntegrationResponse{Output: subOutput(sub)}, nil
-}
-
-func subOutput(sub *stripe.Subscription) map[string]any {
-	return map[string]any{
-		"subscription_id":      sub.ID,
-		"status":               string(sub.Status),
-		"cancel_at_period_end": sub.CancelAtPeriodEnd,
-		"canceled_at":          sub.CanceledAt,
-	}
-}
-
 // metadataFromInput coerces input["metadata"] into a string-keyed
 // string map. Stripe's API rejects non-string values, so anything
 // that doesn't fit is stringified via fmt.Sprint.
@@ -563,10 +1044,31 @@ func metadataFromInput(in map[string]any) map[string]string {
 	return out
 }
 
+// stringSliceFromInput extracts m[key] as []string. Accepts []any with
+// string elements or a single string fallback.
+func stringSliceFromInput(m map[string]any, key string) []string {
+	switch v := m[key].(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, raw := range v {
+			if s, ok := raw.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []string{v}
+	}
+	return nil
+}
+
 // verifyWebhookSig implements the standalone verify_webhook_signature
-// capability (spec §3.13). Workflow authors call this when they have a
-// raw Stripe-Signature header + payload and want a yes/no verification
-// + event metadata, separate from the inbound reactor.
+// capability. Pure helper — allowlisted on the convention exemption list.
 func verifyWebhookSig(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
 	payload := []byte(stringOr(req.Input, "payload"))
 	header := stringOr(req.Input, "stripe_signature")
