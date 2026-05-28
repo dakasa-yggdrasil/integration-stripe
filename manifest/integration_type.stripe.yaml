@@ -5,6 +5,13 @@ metadata:
   namespace: global
 spec:
   provider: stripe
+  # INTEGRATION_CONTRACT §17 — adapter self-declares its purpose.
+  # Stripe is money movement (subscriptions, payments, refunds, payouts).
+  domain: payments
+  # Provider-side management UI. Surfaces render an "Abrir Stripe" CTA.
+  dashboard:
+    url: https://dashboard.stripe.com
+    label: "Abrir Stripe"
   version: 2.2.4
   adapter:
     image_repo: ghcr.io/dakasa-yggdrasil/integration-stripe
