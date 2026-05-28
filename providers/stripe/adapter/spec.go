@@ -20,7 +20,7 @@ import (
 const (
 	Provider        = "stripe"
 	IntegrationType = "stripe"
-	AdapterVersion  = "2.3.2"
+	AdapterVersion  = "2.4.0"
 	// StripeAPIVersion pins the Stripe API version. Bumping requires a
 	// full integration test cycle + adapter version bump. Documented in
 	// README.md and integration_type manifest spec.adapter.version notes.
@@ -123,11 +123,37 @@ func Describe() contract.AdapterDescribeResponse {
 					Type:        "string",
 					Description: "Stripe API key (sk_live_* or rk_live_*). Canonical field name.",
 					Secret:      true,
+					Label:       "Stripe API key",
+					LabelLocale: map[string]string{"pt-BR": "Chave da API Stripe", "en-US": "Stripe API key"},
+					Placeholder: "sk_live_... ou rk_live_...",
+					PlaceholderLocale: map[string]string{
+						"pt-BR": "sk_live_... ou rk_live_...",
+						"en-US": "sk_live_... or rk_live_...",
+					},
+					DescriptionLocale: map[string]string{
+						"pt-BR": "API key da Stripe. Encontre em Stripe Dashboard → Developers → API Keys. Prefira restricted keys (rk_).",
+						"en-US": "Stripe API key from Stripe Dashboard → Developers → API Keys. Prefer restricted keys (rk_).",
+					},
+					Group:       "Stripe API credentials",
+					GroupLocale: map[string]string{"pt-BR": "Credenciais da API Stripe", "en-US": "Stripe API credentials"},
+					Order:       1,
+					Sensitive:   true,
 				},
 				"stripe_secret_key": {
 					Type:        "string",
 					Description: "Stripe API key (sk_live_* or rk_live_*). Alias accepted when secret store entries follow that naming convention. Read only if stripe_api_key is absent.",
 					Secret:      true,
+					Label:       "Stripe API key (alias)",
+					LabelLocale: map[string]string{"pt-BR": "Chave da API Stripe (alias)", "en-US": "Stripe API key (alias)"},
+					Placeholder: "sk_live_... ou rk_live_...",
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Alias do campo stripe_api_key, aceito para compatibilidade com cofres que usam o nome stripe_secret_key.",
+						"en-US": "Alias for stripe_api_key, accepted for compatibility with secret stores that use the stripe_secret_key naming.",
+					},
+					Group:       "Stripe API credentials",
+					GroupLocale: map[string]string{"pt-BR": "Credenciais da API Stripe", "en-US": "Stripe API credentials"},
+					Order:       2,
+					Sensitive:   true,
 				},
 			},
 		},
@@ -138,18 +164,62 @@ func Describe() contract.AdapterDescribeResponse {
 					Type:        "string",
 					Description: "Stripe webhook endpoint signing secret (whsec_*).",
 					Secret:      true,
+					Label:       "Webhook signing secret",
+					LabelLocale: map[string]string{"pt-BR": "Segredo de assinatura do webhook", "en-US": "Webhook signing secret"},
+					Placeholder: "whsec_...",
+					PlaceholderLocale: map[string]string{
+						"pt-BR": "whsec_...",
+						"en-US": "whsec_...",
+					},
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Secret de assinatura do webhook Stripe (whsec_). Encontre em Webhooks → endpoint → Signing secret.",
+						"en-US": "Stripe webhook signing secret (whsec_). Found at Webhooks → endpoint → Signing secret.",
+					},
+					Group:       "Webhook",
+					GroupLocale: map[string]string{"pt-BR": "Webhook", "en-US": "Webhook"},
+					Order:       1,
+					Sensitive:   true,
 				},
 				"stripe_account_id": {
 					Type:        "string",
 					Description: "Optional Stripe Connect account ID; sets Stripe-Account header.",
+					Label:       "Connect account ID",
+					LabelLocale: map[string]string{"pt-BR": "ID da conta Connect", "en-US": "Connect account ID"},
+					Placeholder: "acct_...",
+					DescriptionLocale: map[string]string{
+						"pt-BR": "ID opcional da conta Stripe Connect. Define o header Stripe-Account para chamadas Connect.",
+						"en-US": "Optional Stripe Connect account ID. Sets the Stripe-Account header for Connect calls.",
+					},
+					Group:       "Stripe Connect",
+					GroupLocale: map[string]string{"pt-BR": "Stripe Connect", "en-US": "Stripe Connect"},
+					Order:       2,
 				},
 				"stripe_api_version": {
-					Type:    "string",
-					Default: StripeAPIVersion,
+					Type:        "string",
+					Default:     StripeAPIVersion,
+					Label:       "Stripe API version",
+					LabelLocale: map[string]string{"pt-BR": "Versão da API Stripe", "en-US": "Stripe API version"},
+					Placeholder: StripeAPIVersion,
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Versão da API Stripe usada nas chamadas (header Stripe-Version).",
+						"en-US": "Stripe API version sent via the Stripe-Version header.",
+					},
+					Group:       "Stripe settings",
+					GroupLocale: map[string]string{"pt-BR": "Configuração Stripe", "en-US": "Stripe settings"},
+					Order:       3,
 				},
 				"webhook_tolerance_seconds": {
-					Type:    "integer",
-					Default: 300,
+					Type:        "integer",
+					Default:     300,
+					Label:       "Webhook tolerance (s)",
+					LabelLocale: map[string]string{"pt-BR": "Tolerância do webhook (s)", "en-US": "Webhook tolerance (s)"},
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Janela máxima (em segundos) entre o timestamp do webhook e o instante de verificação.",
+						"en-US": "Maximum allowed clock skew (seconds) between webhook timestamp and verification.",
+					},
+					Group:       "Webhook",
+					GroupLocale: map[string]string{"pt-BR": "Webhook", "en-US": "Webhook"},
+					Order:       4,
 				},
 				// Operator-injected non-secret metadata accepted by every
 				// stripe instance. Declared so yggdrasil-core does not
@@ -162,14 +232,44 @@ func Describe() contract.AdapterDescribeResponse {
 				"base_url": {
 					Type:        "string",
 					Description: "Override RPC base URL for the adapter pod (used by the validation harness).",
+					Label:       "Adapter RPC base URL",
+					LabelLocale: map[string]string{"pt-BR": "URL base do RPC do adapter", "en-US": "Adapter RPC base URL"},
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Override da URL base do RPC do pod do adapter (usado por harness de validação).",
+						"en-US": "Override RPC base URL for the adapter pod (used by the validation harness).",
+					},
+					Group:       "Advanced",
+					GroupLocale: map[string]string{"pt-BR": "Avançado", "en-US": "Advanced"},
+					Order:       5,
+					Format:      "uri",
 				},
 				"environment": {
 					Type:        "string",
 					Description: "Free-form environment tag (sandbox/production) for operator filtering.",
+					Label:       "Environment tag",
+					LabelLocale: map[string]string{"pt-BR": "Tag de ambiente", "en-US": "Environment tag"},
+					Placeholder: "production",
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Tag livre (sandbox/production) usada para filtragem operacional.",
+						"en-US": "Free-form environment tag (sandbox/production) for operator filtering.",
+					},
+					Group:       "Advanced",
+					GroupLocale: map[string]string{"pt-BR": "Avançado", "en-US": "Advanced"},
+					Order:       6,
 				},
 				"provider": {
 					Type:        "string",
 					Description: "Provider-name echo (always \"stripe\"). Kept for instance ergonomics.",
+					Label:       "Provider name",
+					LabelLocale: map[string]string{"pt-BR": "Nome do provider", "en-US": "Provider name"},
+					Default:     "stripe",
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Eco do nome do provider (sempre \"stripe\"). Mantido por ergonomia.",
+						"en-US": "Provider name echo (always \"stripe\"). Kept for instance ergonomics.",
+					},
+					Group:       "Advanced",
+					GroupLocale: map[string]string{"pt-BR": "Avançado", "en-US": "Advanced"},
+					Order:       7,
 				},
 			},
 		},

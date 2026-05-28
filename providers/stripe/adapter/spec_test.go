@@ -18,8 +18,37 @@ import (
 func TestSpec_ProviderAndVersion(t *testing.T) {
 	require.Equal(t, "stripe", Provider)
 	require.Equal(t, "stripe", IntegrationType)
-	require.Equal(t, "2.3.2", AdapterVersion)
+	require.Equal(t, "2.4.0", AdapterVersion)
 	require.Equal(t, "2024-12-18.acacia", StripeAPIVersion)
+}
+
+// TestSpec_UIMetadata_Section15 verifies §15 INTEGRATION_CONTRACT.md
+// compliance: every credential/instance schema property MUST carry UI metadata
+// (label, group, order) so surfaces render forms generically.
+func TestSpec_UIMetadata_Section15(t *testing.T) {
+	d := Describe()
+	for name, prop := range d.CredentialSchema.Properties {
+		if prop.Label == "" {
+			t.Errorf("CredentialSchema[%q]: missing Label (§15)", name)
+		}
+		if prop.LabelLocale == nil || prop.LabelLocale["pt-BR"] == "" || prop.LabelLocale["en-US"] == "" {
+			t.Errorf("CredentialSchema[%q]: missing LabelLocale pt-BR/en-US (§15)", name)
+		}
+		if prop.Group == "" {
+			t.Errorf("CredentialSchema[%q]: missing Group (§15)", name)
+		}
+		if prop.Order == 0 {
+			t.Errorf("CredentialSchema[%q]: missing Order (§15)", name)
+		}
+	}
+	for name, prop := range d.InstanceSchema.Properties {
+		if prop.Label == "" {
+			t.Errorf("InstanceSchema[%q]: missing Label (§15)", name)
+		}
+		if prop.Group == "" {
+			t.Errorf("InstanceSchema[%q]: missing Group (§15)", name)
+		}
+	}
 }
 
 func TestSpec_Describe_HasV2Capabilities(t *testing.T) {
