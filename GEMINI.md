@@ -1,22 +1,60 @@
 # GEMINI
 
-## 🔐 READ FIRST: `INTEGRATION_CONTRACT.md`
+> **Source of truth is `providers/stripe/adapter/spec.go`**, not this
+> file. For the live contract (capabilities, versions, transport) trust
+> `Describe()` and the `Operation*` / `Reactor*` constants in `spec.go`.
+> Read `CLAUDE.md` for the full context and `AGENTS.md` for the
+> rules-of-engagement summary.
 
-Before any change in this repo or any adapter cloned from it, read [`INTEGRATION_CONTRACT.md`](./INTEGRATION_CONTRACT.md). It defines:
-- **§0 ABSOLUTE: Yggdrasil scope vs Backend scope** — Yggdrasil = IDP for COMPANY's internal resources (webhook URL config, infra buckets, repo provisioning). Backend = END-USER business (charge user, refund order). Heuristic: resource follows company on ownership change → Yggdrasil; follows end-user → backend.
-- What a Yggdrasil integration IS / IS NOT
-- The four canonical capability prefixes (`ensure_/observe_/destroy_/discover_`)
-- **Lego principle** (no cloud/secret-store/broker/DB hardcoding)
-- **§6.5 mandatory mutation event emission** (golden rule)
-- Forbidden anti-patterns
+## What this is
 
-If you find yourself naming a capability `create_*`, `list_*`, `delete_*`, `update_*` for a resource — STOP and re-read §5 + §10.
-If you hardcode AWS / Vault / RabbitMQ / Postgres — STOP and re-read §2.
-If you're designing a capability to handle end-user business (charge, refund, subscribe) — STOP and re-read §0. That's backend territory.
+`integration-stripe`: the standalone **Stripe leaf adapter** for the
+Yggdrasil control plane. `integration_type stripe`, namespace `global`,
+domain `payments`. yggdrasil-core ↔ adapter over `http_json` RPC; inbound
+Stripe webhooks handled by a separate reactor server. Multi-tenant (one
+Stripe account = one instance), Stripe Connect via optional
+`stripe_account_id`.
 
-Then read `AGENTS.md` for repo-specific rules.
+## Capability surface
 
-Focus areas:
-- Keep this repository transport/runtime focused.
-- Keep protocol types local.
-- Validate any capability change against README, tests, and examples.
+19 executable ops + 1 reactor (`stripe_webhook_received`, framework-only).
+Authoritative list: `SupportedExecuteOperations` in `spec.go`. Canonical
+`ensure_`/`observe_`/`destroy_` triples (payment_intent, customer,
+subscription, webhook_endpoint) + `observe_` (charge, balance) +
+allowlisted helpers (`create_refund`, `create_payout`,
+`create_setup_intent`, `manage_connect_account`,
+`verify_webhook_signature`). Pre-v2.0.0 names accepted via
+`legacyOperationAliases` / `ResolveOperation`.
+
+## Webhook reactor (HMAC `t=,v1=`)
+
+`POST /webhooks/stripe/{instance_id}` is served by the **local**
+`webhook_server.go` + `hmac.go` (typed errors, `instance_id:event_id`
+dedup, 200-before-emit). The repo deliberately does NOT use the SDK's
+`sig/hmac` or `webhookhttp` packages even though both exist in
+yggdrasil-sdk-go v0.8.3.
+
+## Transport, versions, ports
+
+- `http_json`; `/rpc/describe`, `/rpc/execute`; timeout 30s.
+- Ports: RPC `ADAPTER_PORT` 8081, webhook `WEBHOOK_PORT` 8082, health
+  `HEALTHCHECK_PORT` 8080.
+- `AdapterVersion` ≈ 2.4.0 (read the constant); SDK pin
+  `yggdrasil-sdk-go` ≈ v0.8.3; Stripe client `stripe-go/v83`; Go 1.25.
+
+## Rules
+
+- Keep it standalone (no yggdrasil-core/monorepo runtime imports; wire
+  types in `family/contract/types.go`).
+- Keep `describe` aligned with `execute` (`pkg/contractcheck` enforces
+  it in CI).
+- Validate any capability change against `spec.go`, tests, and `docs/`.
+- Runtime behavior only; business authority stays in yggdrasil-core.
+
+## Manifest may be stale
+
+`manifest/` is maintained separately and can drift from `spec.go` (e.g.
+version `2.2.4` vs `2.4.0`). Do NOT edit `manifest/` as part of a
+docs/context change. No `examples/` dir and no top-level
+`INTEGRATION_CONTRACT.md` / `SURFACE_CONTRACT.md` exist here; adopter
+docs live under `docs/`.

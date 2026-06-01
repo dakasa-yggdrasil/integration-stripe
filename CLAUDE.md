@@ -1,155 +1,167 @@
-# Claude Code Context: integration-template
+# Claude Code Context: integration-stripe
 
-> ## 🔐 READ FIRST: `INTEGRATION_CONTRACT.md`
->
-> Before doing anything in this repo or in any `dakasa-yggdrasil/integration-*` adapter, read **[`INTEGRATION_CONTRACT.md`](./INTEGRATION_CONTRACT.md)**. That document is the canonical definition of what a Yggdrasil integration IS (and IS NOT), the four capability prefixes (`ensure_/observe_/destroy_/discover_`), the **Lego principle** (no cloud / secret-store / broker / DB coupling — Yggdrasil is provider-agnostic by design), and the forbidden anti-patterns. New adapters and new capabilities MUST conform — yggdrasil-core's schema validator enforces a subset at registration time.
->
-> If you find yourself naming a capability `create_*`, `list_*`, `delete_*`, `update_*` for a resource operation — STOP and re-read §5 + §10 (self-test checklist).
->
-> If you find yourself hardcoding "AWS" / "Vault" / "RabbitMQ" / "Postgres" in adapter code — STOP and re-read §2 (Lego principle).
-
-Start with `AGENTS.md` for the rules-of-engagement summary. This file
-expands the context for Claude-style assistants.
+> **Source of truth is the code, not this file.** When this document and
+> the adapter disagree, trust `providers/stripe/adapter/spec.go` —
+> specifically `Describe()` and the `Operation*` / `Reactor*` constants.
+> Everything below is a human-readable map; `spec.go` is what
+> yggdrasil-core actually handshakes against.
 
 ## What this repo is
 
-A **production-ready scaffold** for writing a new Yggdrasil integration
-adapter. Cloned by `yggdrasil new integration <name>` (the
-`internal/scaffoldcli/` path in the `dakasa-yggdrasil/yggdrasil` CLI),
-which rewrites the module path and integration name into the target
-repo. Out of the box: `go test ./...` passes, the worker boots against
-a local RabbitMQ, `/healthz` and `/readyz` are wired.
+`integration-stripe` is the **Stripe leaf adapter** for the Yggdrasil
+control plane (`github.com/dakasa-yggdrasil/integration-stripe`, Go,
+Apache 2.0). It turns Stripe into a declarative Yggdrasil integration:
+yggdrasil-core speaks `http_json` RPC to it (`/rpc/describe`,
+`/rpc/execute`), the adapter translates capabilities into Stripe REST
+calls (via `stripe-go/v83`), and it pushes inbound Stripe webhook
+deliveries back into core as RTA event envelopes.
 
-Repo: `github.com/dakasa-yggdrasil/integration-template` (open source,
-Apache 2.0). Public since 2026-05-26 (Path A: flipped to public via
-`update_repository_visibility` capability).
+- **Domain:** `payments` (money movement — payments, subscriptions,
+  refunds, payouts, Connect). This is provider-side resource management,
+  not end-user business: the adapter manages the *company's* Stripe
+  account configuration. (Charging an end user lives in the backend, not
+  here.)
+- **`integration_type`:** `stripe`, **namespace `global`** (see
+  `manifest/integration_type.stripe.yaml`). Instances are per-namespace
+  (e.g. `integration-stripe-dakasa` in ns `dakasa`).
+- **Multi-tenant by design:** one Stripe account = one
+  `integration_instance`, each with its own API key + webhook signing
+  secret. Connect is supported via the optional `stripe_account_id`
+  instance field (sets the `Stripe-Account` header).
+- **Provider / type:** both named `stripe` (see the `Provider` /
+  `IntegrationType` constants in `spec.go`).
 
-## Stack
+## Capability surface
 
-- Go 1.25.
-- `rabbitmq/amqp091-go v1.10.0` — direct AMQP usage in `main.go`
-  (does NOT go through `yggdrasil-sdk-go` yet — the template
-  currently ships its own minimal RPC layer in `controllers/message/`
-  to keep adopters' import surface small).
-- `go.uber.org/zap` — structured logging.
+19 executable operations + 1 reactor. The full, authoritative list is
+`SupportedExecuteOperations` and the `Operation*` / `Reactor*` constants
+in `spec.go`; do not hand-maintain a second copy here. Shape:
 
-## Repo layout
+- **Canonical triples** (`ensure_`/`observe_`/`destroy_`, per the
+  Yggdrasil universal naming convention) for `payment_intent`,
+  `customer`, `subscription`, `webhook_endpoint`; read-only `observe_`
+  for `charge` and `balance`.
+- **Allowlisted action-shaped helpers** that don't collapse into the
+  triple: `create_refund` and `create_payout` (money-movement),
+  `create_setup_intent`, `manage_connect_account`,
+  `verify_webhook_signature` (pure HMAC helper).
+- **Reactor:** `stripe_webhook_received` — NOT dispatchable via
+  `execute`; framework-invoked by the webhook server on inbound delivery.
 
-```
-main.go                        # AMQP connect, signal handler, /healthz + /readyz
-controllers/message/           # AMQP RPC consumers (consume.go, describe.go, execute.go, rpc.go, register.go)
-internal/adapter/              # spec.go — `Describe()` contract + `Execute()` switch; lint.go enforces it
-internal/protocol/             # local RPC types (kept here, not imported from core, per AGENTS.md)
-pkg/contractcheck/             # PUBLIC lint pkg: catches describe-contract drift in adapter specs
-                               # — extracted (commit 95335d7) so integration-grafana and
-                               # integration-secrets-management can reuse the same check
-examples/                      # Sample run / wiring
-cmd/                           # (extension point)
-yggdrasil-quickstart.yaml      # Quickstart bundle so adopters can `yggdrasil install` this
-templates/                     # Reserved
-```
+**Legacy aliases.** Pre-v2.0.0 names (`create_payment_intent`,
+`cancel_subscription`, `list_charges`, `retrieve_balance`, …) are still
+accepted and mapped to their canonical v2 op by
+`legacyOperationAliases` / `ResolveOperation` in `spec.go` (the bool
+return flags that a legacy name was used so the caller can WARN). The
+SDK's `reconcile.WithLegacyNames` gives the same behavior on the
+reconcile path. Don't remove an alias without checking who still sends
+the old name.
 
-## Mandatory adapter contract
+## Webhook reactor (HMAC `t=,v1=`)
 
-Every Yggdrasil integration adapter MUST:
+The reactor is served **separately from the SDK RPC mux**:
 
-1. Register under a **family** (the contract) and one or more
-   **providers** (implementations).
-2. Expose three mandatory operation categories: `describe`, `execute`,
-   `health`.
-3. Declare a credential schema + instance schema at the family or
-   type manifest level (lives in `internal/adapter/spec.go`).
-4. Keep `Describe()` in sync with what `Execute()` actually accepts.
-   The `pkg/contractcheck` linter enforces this in CI; do NOT silence
-   it.
-5. Ship a `yggdrasil-quickstart.yaml` so adopters can install with
-   `yggdrasil install dakasa-org/integration-your-thing`.
+- `providers/stripe/adapter/webhook_server.go` — `WebhookServer` routes
+  `POST /webhooks/stripe/{instance_id}`, reads the raw body (max 64 KiB),
+  verifies the signature, dedups by `instance_id:event_id` (in-memory
+  `sync.Map`, 24h TTL per spec §2), returns **200 BEFORE emitting** the
+  RTA envelope (so a slow downstream doesn't trigger Stripe's retry
+  storm), then emits asynchronously via the `RTAEmitter`.
+- `providers/stripe/adapter/hmac.go` — `VerifySignature` is a **local,
+  hand-rolled** implementation of the Stripe-Signature algorithm
+  (`signed_payload = "{ts}.{body}"`, `HMAC_SHA256`, constant-time
+  compare over all `v1=` candidates, `t=` tolerance window). It returns
+  typed errors (`ErrSignatureMissingT`, `ErrSignatureMissingV1`,
+  `ErrSignatureExpired`, `ErrSignatureMismatch`, `ErrInvalidTimestamp`)
+  that the tests assert on concretely to defeat any silent-pass refactor.
 
-## Runtime expectations
+**Note — the SDK ships equivalents this repo deliberately does NOT use.**
+`yggdrasil-sdk-go` v0.8.3 has both `sig/hmac/stripe.go` and
+`webhookhttp/server.go`. This adapter keeps its own `hmac.go` +
+`webhook_server.go` instead, so the reactor surface stays under local
+control (typed errors, dedup map, 200-before-emit ordering). If you're
+tempted to "just use the SDK helper", confirm it matches the local
+error/dedup contract first — the tests encode the local one.
 
-- Worker connects to RabbitMQ via `BROKER_URL` (no default — fatal if
-  unset).
-- `/healthz` is liveness only (always 200).
-- `/readyz` reflects RabbitMQ connection state (503 when closed).
-- Graceful shutdown on `SIGINT`/`SIGTERM`. The main loop also exits
-  when `conn.NotifyClose()` fires — kubelet then restarts the pod
-  (cleanest path; matches the pattern in `yggdrasil-core` commit
-  `9d30e34`).
-- Env knobs: `HEALTHCHECK_PORT` (default `8080`),
-  `HTTP_READ_HEADER_TIMEOUT_SECONDS`, `HTTP_READ_TIMEOUT_SECONDS`,
-  `HTTP_WRITE_TIMEOUT_SECONDS`, `HTTP_IDLE_TIMEOUT_SECONDS`.
-
-## CI / image flow
-
-`.github/workflows/`:
-
-- `ci.yml` — go test + lint + contractcheck.
-- `release.yml` — publishes the worker image to
-  `ghcr.io/dakasa-yggdrasil/integration-template`.
-- `publish-oci.yml` — publishes the `yggdrasil-quickstart.yaml` as an
-  OCI artifact on tag (commit `2f47f0e`). The `yggdrasil install`
-  CLI consumes that with the `oci://` ref support added in
-  `dakasa-yggdrasil/yggdrasil` commit `6da5dfe`.
-- `emit-deploy-event.yml` — POSTs the deploy event into yggdrasil-core
-  (same soft-skip pattern as everywhere else).
-- `deploy.yml` — placeholder; this repo is a template, not a service.
-- `incident-escalation.yml` + `postmortem.yml` — Heimdall-driven ops
-  automation.
-
-Cross-org private action note: workflows that previously used
-`dakasa-yggdrasil/action-emit-workflow-run` should use **inline
-curl+jq** (see `~/.claude/projects/-Users-dakasa-projects/memory/reference_inline_curl_jq_cross_org_actions.md`).
-Now that this repo is public the cross-org constraint is relaxed, but
-the inline pattern stays the safer default.
-
-## Recent commits
+## Repo layout (real)
 
 ```
-95335d7 ✨ contractcheck: extract describe-contract lint to public pkg   ← now consumed by integration-grafana + integration-secrets-management
-fe2b853 ✨ lint: catch describe contract drift in adapter spec
-2f47f0e ✨ Add publish-oci GHA workflow: publish quickstart as OCI artifact on tag
-1d32ccb ✨ Production-ready scaffold: yggdrasil-quickstart stub + release workflow
-1fa8558 ✨ Public-ready: Apache 2.0 LICENSE + adopter-facing README
-1aa2a97 Document scheduling failure guardian signals
-7854402 Add incident escalation workflows
-6f1648f Document Heimdall lightweight support contract
-f10535a Accept remediation workflow inputs
-6fc3310 Use official workflow run action
-ae62b20 Add dogfood deploy workflows
-d241b97 Wait for broker in standalone and monorepo runtime
-ee7b42e Split monorepo and standalone Compose setups
-71f6a5d Align repository naming with integration-*
-281503e Initialize repository with production pack and AI context
+cmd/adapter/main.go               # 3 listeners: RPC (8081), webhook (8082), health (8080)
+providers/stripe/
+  adapter/
+    spec.go                       # Describe() contract + Operation*/Reactor* consts + AdapterVersion (SOURCE OF TRUTH)
+    adapter.go, client.go         # Stripe REST client + execute dispatch
+    reconcile.go                  # SDK reconcile dispatch table (WireReconcilers, §6.5 mutation events)
+    event_router.go               # eventTypeToRTAKey() — Stripe event type → RTA routing key
+    webhook_server.go             # inbound webhook reactor (NOT the SDK webhookhttp)
+    hmac.go                       # local Stripe-Signature verify (NOT the SDK sig/hmac)
+    connect.go                    # Stripe Connect (manage_connect_account)
+    metrics.go                    # prometheus counters (sig failures, dedup, RTA emit)
+    spec_test.go, hmac_test.go, webhook_server_test.go, contractcheck_test.go, ...
+  config/                         # InstanceConfig, LoadInstances (STRIPE_INSTANCES_CONFIG)
+  message/                        # SDK RPC handlers: describe.go, execute.go, rpc.go (local {ok,data,error} envelope)
+family/contract/types.go          # local copy of the core wire types (AdapterDescribeResponse, ...) — keeps adapter standalone
+pkg/contractcheck/                # public describe-vs-execute drift linter (used in CI + contractcheck_test.go)
+manifest/                         # integration_type + per-capability + reactor manifests (see staleness note below)
+testdata/stripe-events/           # sample Stripe event payloads for webhook tests
+integration_tests/webhook_test.go # end-to-end webhook flow test
+yggdrasil-quickstart.yaml         # quickstart bundle for `yggdrasil install`
+docs/                             # USAGE / CONFIGURATION / CAPABILITIES / OPERATIONS / DEVELOPMENT
 ```
+
+There is **no `examples/` dir and no top-level `INTEGRATION_CONTRACT.md`
+/ `SURFACE_CONTRACT.md`** in this repo — those live in the yggdrasil
+monorepo. Adopter-facing docs are under `docs/`.
+
+## Transport & versions
+
+- **Transport:** `http_json` (declared in `Describe().Adapter.Transport`
+  and the manifest). Endpoints `/rpc/describe` + `/rpc/execute`,
+  `timeout_seconds: 30`.
+- **Ports** (`cmd/adapter/main.go`):
+  - RPC: `ADAPTER_PORT`, default **8081** (SDK `adapter.New(...).ListenHTTP`).
+  - Webhook: `WEBHOOK_PORT`, default **8082** (local `WebhookServer`).
+  - Health/metrics: `HEALTHCHECK_PORT`, default **8080**
+    (`/healthz`, `/readyz`, `/metrics`).
+- **AdapterVersion:** `spec.go` `const AdapterVersion` ≈ **2.4.0**
+  (read the constant; this number moves). `StripeAPIVersion` pins the
+  Stripe API version (`2024-12-18.acacia`) — bumping it requires a full
+  integration-test cycle + version bump.
+- **SDK pin:** `go.mod` `dakasa-yggdrasil/yggdrasil-sdk-go` ≈ **v0.8.3**
+  (read `go.mod`). Stripe client: `stripe/stripe-go/v83`. Go 1.25.
+
+## Manifest is generated/maintained separately — may be stale
+
+`manifest/` holds the integration_type + per-capability + reactor
+manifests that get published. It is **not** auto-derived from `spec.go`
+at build time, so it can drift. As of this writing
+`manifest/integration_type.stripe.yaml` declares
+`spec.version` / `adapter.version` = **2.2.4** while `spec.go`
+`AdapterVersion` is **2.4.0** — that's a known drift.
+
+**Do NOT edit `manifest/` as part of a CLAUDE.md / docs change.** If you
+need the manifest reconciled to `spec.go`, do it as its own deliberate
+change (and verify against `pkg/contractcheck`). When in doubt about the
+live contract, trust `Describe()` in `spec.go`, not the manifest YAML.
+
+## Non-negotiable rules
+
+- **Standalone.** No imports of yggdrasil-core / monorepo runtime types.
+  The wire types live locally in `family/contract/types.go`.
+- **`describe` stays aligned with `execute`.** `pkg/contractcheck`
+  enforces this in CI (`contractcheck_test.go`, `spec_test.go`); don't
+  silence it.
+- **Rename/add a capability → update `spec.go`, tests, docs, and (as a
+  separate deliberate step) the manifest in the same effort.**
+- **Fail fast.** No swallowing signature/verify errors, no silent
+  emit-loss — emit failures increment `StripeRTAEmitErrors` and log.
+- **Runtime behavior only.** Business authority stays in yggdrasil-core.
 
 ## Validation
 
 ```bash
-go test ./...
-task config
+go test ./...        # unit + integration (webhook flow, hmac, contractcheck)
+task config          # render/validate manifest + quickstart
 task build:image
-task up         # local stack via compose
-task down
+task up / task down  # local stack via docker-compose
 ```
-
-## Mandatory rules (from AGENTS.md, restated)
-
-- **Keep the plugin standalone.** Do not import runtime/domain code
-  from `yggdrasil-core` or the `yggdrasil` monorepo. Protocol types
-  stay local to this repo.
-- **`describe` MUST stay aligned with `execute`.** `pkg/contractcheck`
-  catches drift; don't silence it.
-- **Rename/add capabilities → update tests, examples, and README in
-  the same change.**
-- **Fail fast over silent degradation.** No swallowing AMQP errors,
-  no silent NACK loops.
-- **Business authority stays in `yggdrasil-core`.** This worker owns
-  integration runtime behavior only.
-
-## Where things live
-
-- Adapter spec (`Describe`/`Execute`) → `internal/adapter/spec.go`
-- Contract-drift lint → `internal/adapter/lint.go` + `pkg/contractcheck/`
-- AMQP consume / publish plumbing → `controllers/message/`
-- Health server → `main.go`
-- Quickstart for `yggdrasil install` → `yggdrasil-quickstart.yaml`
