@@ -12,16 +12,16 @@ spec:
   dashboard:
     url: https://dashboard.stripe.com
     label: "Abrir Stripe"
-  version: 2.2.4
+  version: 2.4.0
   adapter:
     image_repo: ghcr.io/dakasa-yggdrasil/integration-stripe
-    image_tag: v2.2.4
+    image_tag: v2.4.0
     transport: http_json
     endpoints:
       describe: /rpc/describe
       execute: /rpc/execute
     timeout_seconds: 30
-    version: 2.2.4
+    version: 2.4.0
   capabilities:
   - describe
   - execute
