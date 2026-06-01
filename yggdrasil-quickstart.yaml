@@ -1,0 +1,269 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: integration_quickstart
+metadata:
+  name: stripe
+  namespace: global
+  description: |
+    One-shot installer for the stripe integration. Deploys the http_json
+    Stripe adapter (RPC + inbound webhook reactor) and registers an
+    integration_instance carrying the Stripe API key and webhook signing
+    secret.
+
+    Adopters install via:
+
+      yggdrasil install dakasa-yggdrasil/integration-stripe
+spec:
+  display_name: Stripe
+  description: |
+    stripe provider — payments, customers, subscriptions, charges, refunds,
+    payouts, setup intents, Connect accounts, and webhook endpoints via the
+    Stripe API. Inbound Stripe webhooks are verified (HMAC-SHA256 over the
+    t=,v1= Stripe-Signature header) and re-emitted as RTA events by the
+    stripe_webhook_received reactor.
+
+    Transport is http_json (RPC on /rpc/describe + /rpc/execute). The API
+    key is inline credential_schema (stripe_api_key, with stripe_secret_key
+    accepted as an alias); the webhook signing secret + Connect account live
+    on the instance schema.
+  providers:
+    - id: stripe
+      display_name: stripe (Stripe payments adapter)
+      description: |
+        Runs as a Kubernetes Deployment with three listeners: RPC
+        (ADAPTER_PORT 8081, /rpc/describe + /rpc/execute), inbound webhook
+        reactor (WEBHOOK_PORT 8082, /webhooks/stripe/{instance_id}), and
+        health (HEALTHCHECK_PORT 8080, /healthz + /readyz + /metrics). The
+        pod reads its Stripe API key + webhook secret from a Kubernetes
+        Secret so the webhook server can verify signatures at the edge,
+        and the same values are registered inline on the instance so
+        yggdrasil-core can drive execute operations.
+      requires:
+        - kind: integration_family
+          name: kubernetes
+          reason: We deploy the adapter pod via kubernetes/apply_manifest.
+        - kind: cluster_capability
+          capability: kubernetes
+          reason: The adapter runs as a Deployment.
+      inputs:
+        - id: instance_name
+          label: integration_instance name
+          type: string
+          required: true
+          default: stripe-default
+          validate:
+            regex: ^[a-z][a-z0-9-]*$
+        - id: namespace
+          label: instance namespace (Yggdrasil)
+          type: string
+          default: global
+        - id: cluster_namespace
+          label: kubernetes namespace
+          type: string
+          default: yggdrasil-adapters
+        - id: image
+          label: adapter image
+          type: string
+          default: ghcr.io/dakasa-yggdrasil/integration-stripe:latest
+        - id: stripe_api_key
+          label: Stripe API key (sk_live_... or rk_live_...)
+          description: |
+            Required. Stripe secret/restricted API key from Stripe Dashboard
+            → Developers → API Keys. Prefer restricted keys (rk_). Maps to
+            credential_schema.stripe_api_key (secret).
+          type: string
+          required: true
+          sensitive: true
+        - id: stripe_webhook_secret
+          label: Stripe webhook signing secret (whsec_...)
+          description: |
+            Required for inbound webhook verification. Found at Stripe
+            Dashboard → Developers → Webhooks → endpoint → Signing secret.
+            Maps to instance_schema.stripe_webhook_secret (secret).
+          type: string
+          required: true
+          sensitive: true
+        - id: stripe_account_id
+          label: Stripe Connect account ID (acct_...)
+          description: |
+            Optional. Sets the Stripe-Account header for Connect/marketplace
+            calls. Leave empty for a single-account (non-Connect) install.
+            Maps to instance_schema.stripe_account_id.
+          type: string
+        - id: stripe_api_version
+          label: Stripe API version
+          description: |
+            Stripe-Version header sent on every call
+            (instance_schema.stripe_api_version).
+          type: string
+          default: 2024-12-18.acacia
+        - id: webhook_tolerance_seconds
+          label: Webhook timestamp tolerance (seconds)
+          description: |
+            Maximum allowed clock skew between the webhook timestamp and
+            verification (instance_schema.webhook_tolerance_seconds).
+          type: string
+          default: "300"
+      steps:
+        - id: apply-credentials-secret
+          description: |
+            Store the Stripe API key + webhook signing secret in a
+            Kubernetes Secret. The adapter consumes them as env vars
+            (STRIPE_API_KEY / STRIPE_WEBHOOK_SECRET / STRIPE_ACCOUNT_ID) so
+            the webhook server can verify Stripe-Signature at the edge
+            without the secrets round-tripping through pod logs.
+          uses:
+            kind: integration
+            family: kubernetes
+            operation: apply_manifest
+          with:
+            manifest:
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: integration-stripe-credentials
+                namespace: "{{ inputs.cluster_namespace }}"
+              type: Opaque
+              stringData:
+                stripe_api_key: "{{ inputs.stripe_api_key }}"
+                stripe_webhook_secret: "{{ inputs.stripe_webhook_secret }}"
+                stripe_account_id: "{{ inputs.stripe_account_id }}"
+        - id: apply-service-account
+          description: ServiceAccount used by the adapter pod.
+          uses:
+            kind: integration
+            family: kubernetes
+            operation: apply_manifest
+          with:
+            manifest:
+              apiVersion: v1
+              kind: ServiceAccount
+              metadata:
+                name: integration-stripe
+                namespace: "{{ inputs.cluster_namespace }}"
+        - id: apply-adapter-deployment
+          description: |
+            Deploy the stripe adapter. The pod answers describe/execute over
+            http_json (ADAPTER_PORT 8081) and serves the inbound webhook
+            reactor on WEBHOOK_PORT 8082.
+          uses:
+            kind: integration
+            family: kubernetes
+            operation: apply_manifest
+          with:
+            manifest:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: integration-stripe-adapter
+                namespace: "{{ inputs.cluster_namespace }}"
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: integration-stripe-adapter
+                template:
+                  metadata:
+                    labels:
+                      app: integration-stripe-adapter
+                  spec:
+                    serviceAccountName: integration-stripe
+                    containers:
+                      - name: adapter
+                        image: "{{ inputs.image }}"
+                        ports:
+                          - name: rpc
+                            containerPort: 8081
+                          - name: webhook
+                            containerPort: 8082
+                          - name: health
+                            containerPort: 8080
+                        env:
+                          - name: BROKER_URL
+                            valueFrom:
+                              secretKeyRef:
+                                name: yggdrasil-broker
+                                key: url
+                          - name: YGGDRASIL_TRANSPORT
+                            value: http
+                          - name: ADAPTER_PORT
+                            value: "8081"
+                          - name: WEBHOOK_PORT
+                            value: "8082"
+                          - name: HEALTHCHECK_PORT
+                            value: "8080"
+                          - name: STRIPE_INSTANCE_ID
+                            value: "{{ inputs.instance_name }}"
+                          - name: STRIPE_API_VERSION
+                            value: "{{ inputs.stripe_api_version }}"
+                          - name: STRIPE_API_KEY
+                            valueFrom:
+                              secretKeyRef:
+                                name: integration-stripe-credentials
+                                key: stripe_api_key
+                          - name: STRIPE_WEBHOOK_SECRET
+                            valueFrom:
+                              secretKeyRef:
+                                name: integration-stripe-credentials
+                                key: stripe_webhook_secret
+                          - name: STRIPE_ACCOUNT_ID
+                            valueFrom:
+                              secretKeyRef:
+                                name: integration-stripe-credentials
+                                key: stripe_account_id
+                        readinessProbe:
+                          httpGet:
+                            path: /readyz
+                            port: health
+                          initialDelaySeconds: 5
+                          periodSeconds: 10
+                        livenessProbe:
+                          httpGet:
+                            path: /healthz
+                            port: health
+                          initialDelaySeconds: 5
+                          periodSeconds: 20
+        - id: register-instance
+          description: |
+            Register the integration_instance pointing at the stripe type.
+            credential_schema.mode is inline, so the API key is passed via
+            spec.credentials; the webhook secret + Connect settings go in
+            spec.config per the instance schema.
+          uses:
+            kind: yggdrasil
+            operation: apply_manifest
+          with:
+            manifest:
+              apiVersion: yggdrasil.io/v1alpha1
+              kind: integration_instance
+              metadata:
+                name: "{{ inputs.instance_name }}"
+                namespace: "{{ inputs.namespace }}"
+              spec:
+                type_ref:
+                  namespace: global
+                  name: stripe
+                credentials:
+                  stripe_api_key: "{{ inputs.stripe_api_key }}"
+                config:
+                  stripe_webhook_secret: "{{ inputs.stripe_webhook_secret }}"
+                  stripe_account_id: "{{ inputs.stripe_account_id }}"
+                  stripe_api_version: "{{ inputs.stripe_api_version }}"
+                  webhook_tolerance_seconds: "{{ inputs.webhook_tolerance_seconds }}"
+      smoke_test:
+        description: |
+          Observe the Stripe account balance (GET /v1/balance). Read-only,
+          no filters, no money movement — the safest probe Stripe exposes.
+          A structured balance response confirms BOTH adapter wiring
+          (http_json execute round trip) and Stripe API auth in one shot.
+        uses:
+          kind: integration
+          family: stripe
+          operation: observe_balance
+        with:
+          input: {}
+        timeout_seconds: 30
+      post_install_hints:
+        - "Expose WEBHOOK_PORT (8082) behind an Ingress and register the public URL at Stripe Dashboard → Developers → Webhooks. The inbound path is /webhooks/stripe/{instance_name}; it must be reachable from Stripe for the stripe_webhook_received reactor to fire."
+        - "The signing secret on the Stripe webhook endpoint must match stripe_webhook_secret — signature verification rejects deliveries otherwise (Stripe-Signature t=,v1= HMAC-SHA256, webhook_tolerance_seconds clock-skew window)."
+        - "Drive resources with the ensure_/observe_/destroy_ triples: family=stripe, operation=ensure_payment_intent | ensure_customer | ensure_subscription | observe_charges | create_refund (money-movement, allowlisted)."
+        - "Rotate the Stripe API key by re-running register-instance with a new stripe_api_key and updating the integration-stripe-credentials Secret."
