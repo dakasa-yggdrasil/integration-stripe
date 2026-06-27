@@ -55,6 +55,16 @@ const (
 	OperationManageConnectAccount = "manage_connect_account"
 	OperationVerifyWebhookSig     = "verify_webhook_signature"
 
+	// OperationOnSurfaceQuery is the read-only aggregator invoked by core's
+	// /api/v1/integrations/{instance_id}/surface-query proxy on behalf of the
+	// payments-ops console surface. The surface passes { query_name, params }
+	// as Input; the adapter routes by query_name to a read aggregator (see
+	// surface_query.go). Its "on_" prefix classifies it as a "reactor"
+	// (framework-invoked, hidden from grant pickers) via actionCategory — same
+	// convention as the kubernetes/aws/grafana/prometheus adapters. It is a
+	// pure GET wrapper over the existing observe_* handlers; it mutates nothing.
+	OperationOnSurfaceQuery = "on_surface_query"
+
 	// 1 reactor (NOT executable via execute; framework-invoked via webhook).
 	ReactorStripeWebhookReceived = "stripe_webhook_received"
 
@@ -94,6 +104,7 @@ var SupportedExecuteOperations = []string{
 	OperationCreatePayout,
 	OperationManageConnectAccount,
 	OperationVerifyWebhookSig,
+	OperationOnSurfaceQuery,
 }
 
 // Describe returns the adapter contract for yggdrasil-core handshake.
@@ -393,6 +404,10 @@ func describeActionCatalog() []contract.IntegrationActionDefinition {
 		{Name: OperationManageConnectAccount, Description: "Create / get / update a Stripe Connect Express/Custom account.", ResourceTypes: []string{resourceConnect}, Idempotent: true},
 		{Name: OperationVerifyWebhookSig, Description: "Standalone HMAC-SHA256 webhook signature verification. Pure helper — allowlisted.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
 
+		// Surface-driven read aggregator (category=reactor via on_ prefix:
+		// framework-invoked, hidden from grant pickers). Read-only.
+		{Name: OperationOnSurfaceQuery, Description: "Surface-driven read aggregator invoked by core's /api/v1/integrations/{instance_id}/surface-query proxy. Accepts { query_name, params }; routes by query_name to a read aggregator. Supported: list-webhook-endpoints (webhook-health pillar — {id,url,status,enabled_events,api_version}), get-balance (available + pending arrays per currency, smallest unit), list-charges (recent charges for reconciliation — {id,amount,currency,status,created,refunded,payment_intent}; customer PII intentionally not projected). Read-only; never mutates.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
+
 		// Reactor.
 		{Name: ReactorStripeWebhookReceived, Description: "Inbound Stripe webhook delivery (framework-invoked).", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: false},
 	}
@@ -402,8 +417,13 @@ func describeActionCatalog() []contract.IntegrationActionDefinition {
 	return catalog
 }
 
+// actionCategory classifies an action by its prefix convention.
+// "stripe_webhook_*" (the inbound webhook reactor) and "on_*" lifecycle hooks
+// (e.g. on_surface_query) → "reactor": framework-invoked, hidden from grant
+// pickers. Everything else → "capability" (user-grantable). Mirrors the
+// prometheus/grafana sibling adapters.
 func actionCategory(name string) string {
-	if strings.HasPrefix(name, "stripe_webhook_") {
+	if strings.HasPrefix(name, "stripe_webhook_") || strings.HasPrefix(name, "on_") {
 		return "reactor"
 	}
 	return "capability"

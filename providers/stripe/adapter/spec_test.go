@@ -54,10 +54,11 @@ func TestSpec_UIMetadata_Section15(t *testing.T) {
 func TestSpec_Describe_HasV2Capabilities(t *testing.T) {
 	resp := Describe()
 	require.Equal(t, "stripe", resp.Provider)
-	// 19 execute + 1 reactor = 20 total in ActionCatalog.
-	require.Len(t, resp.ActionCatalog, 20, "expected 20 actions in catalog")
-	// SupportedExecuteOperations excludes the reactor.
-	require.Len(t, SupportedExecuteOperations, 19, "expected 19 executable ops")
+	// 20 execute (incl. on_surface_query) + 1 webhook reactor = 21 in catalog.
+	require.Len(t, resp.ActionCatalog, 21, "expected 21 actions in catalog")
+	// SupportedExecuteOperations includes on_surface_query (reactor-categorized
+	// but dispatched via Execute) and excludes the stripe_webhook_received reactor.
+	require.Len(t, SupportedExecuteOperations, 20, "expected 20 executable ops")
 }
 
 func TestExecute_EnsurePaymentIntent(t *testing.T) {

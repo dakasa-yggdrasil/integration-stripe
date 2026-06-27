@@ -118,6 +118,9 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		return createPayout(ctx, client, req)
 	case OperationManageConnectAccount:
 		return manageConnectAccount(ctx, client, req)
+	// Surface-driven read aggregator (read-only; routes by query_name).
+	case OperationOnSurfaceQuery:
+		return onSurfaceQuery(ctx, client, req)
 	default:
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("unsupported operation %q", op)
 	}
@@ -715,12 +718,22 @@ func observeCharges(ctx context.Context, c *stripe.Client, req contract.AdapterE
 			stoppedEarly = true
 			return false
 		}
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"id":       charge.ID,
 			"amount":   charge.Amount,
-			"currency": charge.Currency,
+			"currency": string(charge.Currency),
 			"status":   string(charge.Status),
-		})
+			"created":  charge.Created,
+			"refunded": charge.Refunded,
+		}
+		// PaymentIntent is an opaque ref (rule #0): expose only the id,
+		// never customer name / email from billing_details.
+		if charge.PaymentIntent != nil {
+			row["payment_intent"] = charge.PaymentIntent.ID
+		} else {
+			row["payment_intent"] = ""
+		}
+		out = append(out, row)
 		count++
 		return true
 	})
@@ -851,6 +864,7 @@ func observeWebhookEndpoints(ctx context.Context, c *stripe.Client, req contract
 			"url":            we.URL,
 			"status":         string(we.Status),
 			"enabled_events": we.EnabledEvents,
+			"api_version":    we.APIVersion,
 		}}, nil
 	}
 	limit := intFromInput(in, "limit")
@@ -887,6 +901,7 @@ func observeWebhookEndpoints(ctx context.Context, c *stripe.Client, req contract
 			"url":            we.URL,
 			"status":         string(we.Status),
 			"enabled_events": we.EnabledEvents,
+			"api_version":    we.APIVersion,
 		})
 		count++
 		return true
