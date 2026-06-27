@@ -64,7 +64,7 @@ const FAILURE_CARD: CSSProperties = {
   gap: "var(--sp-2)",
   padding: "var(--sp-4) var(--sp-5)",
   background: "var(--sand2)",
-  border: "1px solid var(--crit, #b3261e)",
+  border: "1px solid var(--crit)",
   borderRadius: "var(--r-md)"
 };
 

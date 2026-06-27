@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Pill } from "@dakasa-yggdrasil/surface-toolkit";
 import type { PillTone } from "@dakasa-yggdrasil/surface-toolkit";
 
@@ -69,8 +69,11 @@ const CARD: CSSProperties = {
 };
 
 function NavCard({ card }: { card: NavCardSpec }) {
+  // Carry the current query string (e.g. `?mock`) into the detail route so DEV
+  // review survives the hop from Home — matches the ChargeTable drill-down.
+  const { search } = useLocation();
   return (
-    <Link to={card.to} className="st-nav-card" style={CARD} aria-label={card.label}>
+    <Link to={`${card.to}${search}`} className="st-nav-card" style={CARD} aria-label={card.label}>
       <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-2)" }}>
         <span
           className="st-nav-label"
