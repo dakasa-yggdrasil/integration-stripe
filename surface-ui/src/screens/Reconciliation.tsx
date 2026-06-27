@@ -148,11 +148,10 @@ export function Reconciliation() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-6)" }}>
-        {/* the rule-#0 reminder + the honest reconciliation-ledger gap */}
+        {/* rule-#0 reminder */}
         <p style={{ margin: 0, fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>
-          Visão de <strong>ops de pagamentos</strong>: só referências opacas (<code>id</code>, <code>payment_intent</code>)
-          — <strong>sem coluna de cliente</strong>, sem nome ou e-mail. Para o detalhe de uma cobrança, cada{" "}
-          <strong>↗</strong> abre o pagamento no Stripe.
+          Só refs opacas (<code>id</code>, <code>payment_intent</code>) — sem dados de pagador. Detalhe via{" "}
+          <strong>↗</strong> no Stripe.
         </p>
 
         <div style={NOTE}>
@@ -160,9 +159,7 @@ export function Reconciliation() {
             ◦
           </span>
           <span style={{ fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>
-            O <strong>ledger de conciliação</strong> (“eventos recebidos = RTA emitido”) — que casa cada webhook
-            recebido com o evento RTA emitido a jusante — precisa do passthrough do <code>/metrics</code> do adapter
-            (<em>needs-work</em>). Esta lista é o contexto de cobranças recentes, não o ledger fechado.
+            Ledger de conciliação: em breve.
           </span>
         </div>
 
@@ -205,7 +202,7 @@ export function Reconciliation() {
             </a>
           ) : (
             <span
-              title="Link para o Stripe nativo indisponível: o host do dashboard ainda não é exposto por um surface read."
+              title="Link para o Stripe indisponível."
               style={{ fontSize: "var(--fs-sm)", fontWeight: 700, color: "var(--mut)", opacity: 0.7 }}
             >
               Pagamentos no Stripe <span aria-hidden="true">↗</span>
@@ -218,7 +215,7 @@ export function Reconciliation() {
           need="stripe.refunds.create"
           perms={scope.perms}
           eyebrow="Remediação"
-          label="Estornar uma cobrança é movimentação de dinheiro — admin, fora da v1. Quando o caminho de escrita for ligado, o estorno entra aqui como remediação de ops (com idempotência + auditoria), nunca um botão transacional solto."
+          label="Estorno: movimentação de dinheiro, admin, fora da v1."
           hint="create_refund é admin e fora da v1."
         />
       </div>
@@ -232,7 +229,7 @@ export function Reconciliation() {
       <TierTwoShell
         eyebrow="Conta"
         title="Reconciliação & Refunds"
-        subtitle="Cobranças recentes por referência opaca — sem dados de cliente. O ledger de conciliação é needs-work; o estorno é admin e fica fora da v1 (↗ para o Stripe)."
+        subtitle="Cobranças recentes — só refs opacas."
         kpis={chromeBusy ? undefined : kpis}
       >
         {body()}

@@ -66,7 +66,7 @@ export function KpiStrip({ pulse }: KpiStripProps) {
           chart={kpiSubtext("a liberar", false)}
         />
         <KpiTile eyebrow="Disputas" value="—" chart={kpiSubtext("via ↗ no Stripe", false)} />
-        <KpiTile eyebrow="Falhas de assinatura" value="—" chart={kpiSubtext("sem passthrough", false)} />
+        <KpiTile eyebrow="Falhas de assinatura" value="—" chart={kpiSubtext("em breve", false)} />
       </div>
     </div>
   );

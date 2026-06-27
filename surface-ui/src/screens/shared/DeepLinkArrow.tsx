@@ -41,7 +41,7 @@ export function DeepLinkArrow({ href, label, className, style }: DeepLinkArrowPr
       <span
         className={className}
         aria-hidden="true"
-        title="Link para o Stripe nativo indisponível: o host do dashboard da instância ainda não é exposto por um surface read."
+        title="Link para o Stripe indisponível."
         style={{ ...BASE, color: "var(--mut)", opacity: 0.4, cursor: "not-allowed", ...style }}
       >
         ↗

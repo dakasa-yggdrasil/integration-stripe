@@ -24,44 +24,6 @@ const KPI_GRID = `
   @container (max-width: 560px) { .st-dp-kpis { grid-template-columns: 1fr; } }
 `;
 
-const SECTION_TITLE: CSSProperties = {
-  margin: 0,
-  fontFamily: "var(--font-heading)",
-  fontSize: "var(--fs-lg)",
-  fontWeight: 500,
-  color: "var(--ink)"
-};
-
-const CARD: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--sp-2)",
-  padding: "var(--sp-4) var(--sp-5)",
-  background: "var(--cream)",
-  border: "1px solid var(--line)",
-  borderRadius: "var(--r-md)"
-};
-
-// What this page WILL show once a dispute read exists — framed honestly as
-// needs-work, NEVER fabricated as present data. Disputes are financially urgent
-// (response deadlines), so faking a count here would be the worst kind of lie.
-const NEEDS_WORK: Array<{ label: string; detail: string }> = [
-  {
-    label: "Disputas abertas & prazo de resposta",
-    detail:
-      "Quais chargebacks estão abertos e até quando responder. O adapter não tem uma op observe_disputes hoje — as disputas são reconstruídas a jusante a partir do log de eventos RTA (charge.dispute.created/closed), não lidas aqui. Por isso não mostramos um número — seria inventado."
-  },
-  {
-    label: "Evidência & estado da contestação",
-    detail:
-      "O estado de cada disputa (needs_response / under_review / won / lost) e a evidência submetida. Chega quando um cliente /v1/disputes + parser + testes existir no adapter."
-  },
-  {
-    label: "Alerta de prazo",
-    detail:
-      "O sinal de “responda até X” entra no “Precisa de você” da Home quando o passthrough de evento RTA / dispute estiver ligado. Até lá, o prazo real mora no Stripe."
-  }
-];
 
 export function Disputes() {
   const mock = mockEnabled();
@@ -80,15 +42,15 @@ export function Disputes() {
       <style>{KPI_GRID}</style>
       <div className="st-dp-kpis">
         <KpiTile eyebrow="Disputas abertas" value="—" chart={kpiSubtext("via ↗ no Stripe", false)} />
-        <KpiTile eyebrow="Prazo mais próximo" value="—" chart={kpiSubtext("leitura needs-work", false)} />
-        <KpiTile eyebrow="Estado" value="—" chart={kpiSubtext("reconstruído via RTA", false)} />
+        <KpiTile eyebrow="Prazo mais próximo" value="—" chart={kpiSubtext("no Stripe", false)} />
+        <KpiTile eyebrow="Estado" value="—" chart={kpiSubtext("no Stripe", false)} />
       </div>
     </div>
   );
 
   function body() {
     if (instanceLoading) {
-      return <LoadingState label="Preparando os links de disputa…" />;
+      return <LoadingState label="Carregando…" />;
     }
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-6)" }}>
@@ -105,10 +67,7 @@ export function Disputes() {
           }}
         >
           <p style={{ margin: 0, fontSize: "var(--fs-md)", color: "var(--body)", lineHeight: 1.55 }}>
-            As <strong>disputas</strong> não são legíveis nesta surface: o adapter não tem uma op de leitura para elas —
-            são reconstruídas a jusante a partir do log de eventos (RTA / Prometheus). Para não inventar um número de
-            disputas abertas nem um prazo, esta página é <strong>deep-link</strong>: o estado real, com os prazos de
-            resposta, mora no Stripe nativo.
+            Disputas: estado e prazos no Stripe (<strong>↗</strong>).
           </p>
           <div>
             {href ? (
@@ -135,7 +94,7 @@ export function Disputes() {
               </a>
             ) : (
               <span
-                title="Link para o Stripe nativo indisponível: o host do dashboard ainda não é exposto por um surface read."
+                title="Link para o Stripe indisponível."
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -156,19 +115,6 @@ export function Disputes() {
             )}
           </div>
         </section>
-
-        {/* what's needs-work */}
-        <section style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
-          <h3 style={SECTION_TITLE}>O que falta conectar</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
-            {NEEDS_WORK.map((v) => (
-              <div key={v.label} style={CARD}>
-                <span style={{ fontWeight: 600, color: "var(--ink)" }}>{v.label}</span>
-                <span style={{ fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>{v.detail}</span>
-              </div>
-            ))}
-          </div>
-        </section>
       </div>
     );
   }
@@ -178,7 +124,7 @@ export function Disputes() {
       <TierTwoShell
         eyebrow="Conta"
         title="Disputas"
-        subtitle="Deep-link por ora: as disputas não são lidas no adapter (reconstruídas via RTA a jusante). Nada de disputa inventada — o estado e os prazos reais estão no Stripe (↗)."
+        subtitle="Deep-link para o Stripe."
         kpis={instanceLoading ? undefined : kpis}
       >
         {body()}

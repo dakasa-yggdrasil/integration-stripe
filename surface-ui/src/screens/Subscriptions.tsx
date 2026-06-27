@@ -137,9 +137,8 @@ export function Subscriptions() {
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-6)" }}>
         {/* rule-#0 reminder */}
         <p style={{ margin: 0, fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>
-          Visão de <strong>ops de pagamentos</strong>: só referências opacas (<code>sub_…</code>, <code>price_…</code>,{" "}
-          <code>cus_…</code>) — <strong>sem coluna de cliente</strong>, sem nome ou e-mail. Para gerenciar uma
-          assinatura, cada <strong>↗</strong> abre o registro no Stripe.
+          Só refs opacas (<code>sub_…</code>, <code>price_…</code>, <code>cus_…</code>) — sem dados de pagador. Gerir via{" "}
+          <strong>↗</strong> no Stripe.
         </p>
 
         <div style={NOTE}>
@@ -147,9 +146,8 @@ export function Subscriptions() {
             ◦
           </span>
           <span style={{ fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>
-            Uma assinatura marcada <strong>encerra no período</strong> não renova ao fim do ciclo atual — o{" "}
-            <em>cancel_at_period_end</em> está ligado. Cobrança, alteração de plano e cancelamento são movimentação de
-            conta e ficam no Stripe nativo (<strong>↗</strong>); esta surface é leitura.
+            <strong>Encerra no período</strong>: <code>cancel_at_period_end</code> ligado, não renova. Leitura — agir no
+            Stripe (<strong>↗</strong>).
           </span>
         </div>
 
@@ -192,7 +190,7 @@ export function Subscriptions() {
             </a>
           ) : (
             <span
-              title="Link para o Stripe nativo indisponível: o host do dashboard ainda não é exposto por um surface read."
+              title="Link para o Stripe indisponível."
               style={{ fontSize: "var(--fs-sm)", fontWeight: 700, color: "var(--mut)", opacity: 0.7 }}
             >
               Assinaturas no Stripe <span aria-hidden="true">↗</span>
@@ -210,7 +208,7 @@ export function Subscriptions() {
       <TierTwoShell
         eyebrow="Conta"
         title="Assinaturas"
-        subtitle="As assinaturas recorrentes da conta — status, plano, valor e renovação, por referência opaca. Sem dados de cliente; gerir é no Stripe (↗)."
+        subtitle="Status, plano e renovação — só refs opacas."
         kpis={chromeBusy ? undefined : kpis}
       >
         {body()}

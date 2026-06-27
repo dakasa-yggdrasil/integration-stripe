@@ -115,10 +115,8 @@ export function Webhooks() {
             ◦
           </span>
           <span style={{ fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>
-            Um endpoint <strong>desativado</strong> faz o Stripe parar de entregar — os eventos se acumulam em silêncio.
-            A <strong>verificação de assinatura</strong> (HMAC <code>t=,v1=</code>) é feita pelo adapter no recebimento;
-            a <em>taxa</em> de falha de assinatura vive no <code>/metrics</code> do adapter e ainda não tem passthrough
-            para esta surface (<em>needs-work</em>). Para o histórico de entregas, abra o endpoint no Stripe (<strong>↗</strong>).
+            Endpoint <strong>desativado</strong> = Stripe para de entregar; eventos se acumulam. Histórico de entregas
+            no Stripe (<strong>↗</strong>).
           </span>
         </div>
 
@@ -145,7 +143,7 @@ export function Webhooks() {
             </a>
           ) : (
             <span
-              title="Link para o Stripe nativo indisponível: o host do dashboard ainda não é exposto por um surface read."
+              title="Link para o Stripe indisponível."
               style={{ fontSize: "var(--fs-sm)", fontWeight: 700, color: "var(--mut)", opacity: 0.7 }}
             >
               Webhooks no Stripe <span aria-hidden="true">↗</span>
@@ -163,7 +161,7 @@ export function Webhooks() {
       <TierTwoShell
         eyebrow="Conta"
         title="Webhook Health"
-        subtitle="Os endpoints de webhook do Stripe — URL, status de entrega, eventos assinados e API version. O sinal canônico desta surface."
+        subtitle="Endpoints, entrega e eventos assinados."
         kpis={chromeBusy ? undefined : kpis}
       >
         {body()}

@@ -120,7 +120,7 @@ export function Balance() {
           <BalanceTable available={balance.available} pending={balance.pending} />
         </section>
 
-        {/* honest payouts section — history is needs-work */}
+        {/* payouts — deep-link out */}
         <section style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
           <h3 style={SECTION_TITLE}>Payouts</h3>
           <div style={NOTE}>
@@ -128,9 +128,7 @@ export function Balance() {
               ◦
             </span>
             <span style={{ fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>
-              O <strong>histórico de payouts</strong> não é lido por esta surface — o adapter não tem uma op{" "}
-              <code>observe_payouts</code> hoje (<em>needs-work</em>). Não inventamos uma lista. Para ver os repasses
-              já feitos e agendados, abra os payouts no Stripe (<strong>↗</strong>).
+              Histórico de payouts: no Stripe (<strong>↗</strong>).
             </span>
           </div>
           <div style={{ display: "flex", gap: "var(--sp-4)", flexWrap: "wrap" }}>
@@ -153,7 +151,7 @@ export function Balance() {
               </a>
             ) : (
               <span
-                title="Link para o Stripe nativo indisponível: o host do dashboard ainda não é exposto por um surface read."
+                title="Link para o Stripe indisponível."
                 style={{ fontSize: "var(--fs-sm)", fontWeight: 700, color: "var(--mut)", opacity: 0.7 }}
               >
                 Payouts no Stripe <span aria-hidden="true">↗</span>
@@ -185,7 +183,7 @@ export function Balance() {
           need="stripe.payouts.create"
           perms={scope.perms}
           eyebrow="Remediação"
-          label="Disparar um payout manual do saldo disponível é movimentação de dinheiro — admin, fora da v1. Chega como controle de remediação quando o caminho de escrita for ligado."
+          label="Payout manual: movimentação de dinheiro, admin, fora da v1."
           hint="create_payout é admin e fora da v1."
         />
       </div>
@@ -199,7 +197,7 @@ export function Balance() {
       <TierTwoShell
         eyebrow="Conta"
         title="Saldo & Payouts"
-        subtitle="O saldo disponível e pendente por moeda. O histórico de payouts é needs-work; mover dinheiro é admin e fica fora da v1 (↗ para o Stripe)."
+        subtitle="Saldo por moeda."
         kpis={chromeBusy ? undefined : kpis}
       >
         {body()}

@@ -142,9 +142,8 @@ export function PaymentIntents() {
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-6)" }}>
         {/* rule-#0 reminder */}
         <p style={{ margin: 0, fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>
-          Visão de <strong>ops de pagamentos</strong>: só a referência opaca (<code>pi_…</code>) com status, valor e
-          captura — <strong>sem coluna de cliente</strong>. Para o detalhe de um pagamento, cada <strong>↗</strong> abre
-          no Stripe.
+          Só a ref opaca (<code>pi_…</code>) — status, valor, captura. Sem dados de pagador. Detalhe via{" "}
+          <strong>↗</strong> no Stripe.
         </p>
 
         <div style={NOTE}>
@@ -152,9 +151,8 @@ export function PaymentIntents() {
             ◦
           </span>
           <span style={{ fontSize: "var(--fs-sm)", color: "var(--mut)", lineHeight: 1.5 }}>
-            Um PI em <code>requires_payment_method</code> / <code>requires_action</code> está parado esperando o cliente;
-            um em <strong>captura manual</strong> (<code>requires_capture</code>) está autorizado mas ainda não capturado.
-            Capturar ou cancelar é movimentação de conta e fica no Stripe (<strong>↗</strong>).
+            <code>requires_*</code>: parado esperando o pagador. <code>requires_capture</code>: autorizado, não capturado.
+            Capturar/cancelar no Stripe (<strong>↗</strong>).
           </span>
         </div>
 
@@ -197,7 +195,7 @@ export function PaymentIntents() {
             </a>
           ) : (
             <span
-              title="Link para o Stripe nativo indisponível: o host do dashboard ainda não é exposto por um surface read."
+              title="Link para o Stripe indisponível."
               style={{ fontSize: "var(--fs-sm)", fontWeight: 700, color: "var(--mut)", opacity: 0.7 }}
             >
               Pagamentos no Stripe <span aria-hidden="true">↗</span>
@@ -215,7 +213,7 @@ export function PaymentIntents() {
       <TierTwoShell
         eyebrow="Conta"
         title="Payment Intents"
-        subtitle="Os payment intents recentes — status, valor, moeda e método de captura, por referência opaca. Sem dados de cliente; agir é no Stripe (↗)."
+        subtitle="Status, valor e captura — só refs opacas."
         kpis={chromeBusy ? undefined : kpis}
       >
         {body()}
