@@ -1,3 +1,4 @@
+import { Link, useLocation } from "react-router-dom";
 import { Pill } from "@dakasa-yggdrasil/surface-toolkit";
 import type { ChargeItem } from "../../data";
 import { formatMoney, paymentIntentHref } from "../../data";
@@ -56,14 +57,19 @@ const TABLE_CSS = `
 
 /**
  * The recent-charges roster — reconciliation context, refs only. Columns: the
- * charge id (mono opaque ref), the amount formatted to its currency, the
- * currency code, a status dot (succeeded/pending/failed, read from the field), a
- * "estornada" pill when refunded, the created timestamp, and the payment_intent
- * (mono opaque ref). The row "↗" deep-links to the payment in native Stripe.
- * There is intentionally NO customer column (rule #0).
+ * charge id (mono opaque ref, a Link into the `/charge/:id` drill-down), the
+ * amount formatted to its currency, the currency code, a status dot
+ * (succeeded/pending/failed, read from the field), a "estornada" pill when
+ * refunded, the created timestamp, and the payment_intent (mono opaque ref). The
+ * row "↗" deep-links OUT to the payment in native Stripe (distinct from the
+ * intra-app drill-down on the id). There is intentionally NO customer column
+ * (rule #0).
  */
 export function ChargeTable({ charges, stripeBase }: ChargeTableProps) {
   const rows = [...charges].sort((a, b) => b.created - a.created);
+  // Carry the current query string (e.g. `?mock`) into the drill-down so DEV
+  // review survives the round trip back to Reconciliação.
+  const { search } = useLocation();
 
   return (
     <div className="st-ch-table">
@@ -85,13 +91,14 @@ export function ChargeTable({ charges, stripeBase }: ChargeTableProps) {
             {rows.map((c) => (
               <tr key={c.id} className="st-ch-row">
                 <td>
-                  <span
+                  <Link
+                    to={`/charge/${encodeURIComponent(c.id)}${search}`}
                     className="st-ch-id st-ch-mono"
-                    style={{ fontWeight: 600, color: "var(--ink)", transition: "color 100ms ease" }}
-                    title={c.id}
+                    style={{ fontWeight: 600, color: "var(--ink)", textDecoration: "none", transition: "color 100ms ease" }}
+                    title={`Abrir detalhe de ${c.id}`}
                   >
                     {c.id}
-                  </span>
+                  </Link>
                 </td>
                 <td className="amount">{formatMoney(c.amount, c.currency)}</td>
                 <td style={{ textTransform: "uppercase", color: "var(--mut)" }}>{c.currency || "—"}</td>

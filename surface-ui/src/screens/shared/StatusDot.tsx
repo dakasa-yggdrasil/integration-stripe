@@ -65,3 +65,39 @@ export function chargeStatusTone(status: string): DotTone {
       return "mut";
   }
 }
+
+/** Map a Stripe subscription status to a dot tone. */
+export function subscriptionStatusTone(status: string): DotTone {
+  switch (status.trim().toLowerCase()) {
+    case "active":
+    case "trialing":
+      return "ok";
+    case "past_due":
+    case "unpaid":
+    case "incomplete":
+      return "warn";
+    case "canceled":
+    case "incomplete_expired":
+      return "crit";
+    default:
+      return "mut";
+  }
+}
+
+/** Map a Stripe PaymentIntent status to a dot tone. */
+export function paymentIntentStatusTone(status: string): DotTone {
+  switch (status.trim().toLowerCase()) {
+    case "succeeded":
+      return "ok";
+    case "processing":
+    case "requires_capture":
+    case "requires_action":
+    case "requires_confirmation":
+      return "warn";
+    case "requires_payment_method":
+    case "canceled":
+      return "crit";
+    default:
+      return "mut";
+  }
+}

@@ -14,7 +14,14 @@
 // dispute count or a signature-failure number.
 
 import type { CollaboratorScope } from "@dakasa-yggdrasil/surface-toolkit";
-import type { WebhookEndpointItem, BalanceAmount, ChargeItem } from "./types";
+import type {
+  WebhookEndpointItem,
+  BalanceAmount,
+  ChargeItem,
+  SubscriptionItem,
+  PaymentIntentItem,
+  ChargeDetail
+} from "./types";
 
 /**
  * DEV `?mock` switch, shared across the hooks so every read short-circuits the
@@ -172,4 +179,153 @@ export function mockCharges(): ChargeItem[] {
     refunded,
     paymentIntent: "pi_" + piSuffix
   }));
+}
+
+// ------------------------------------------------------------ subscriptions
+
+// 6 subscriptions for the Assinaturas roster: a healthy spread of statuses plus
+// EXACTLY ONE set to cancel at period end (the readable "vai encerrar" signal)
+// and one past_due (a real "precisa de você"). `customer` is the opaque Stripe
+// ref only (cus_…) — NO name/email anywhere (rule #0). Amounts in cents, mostly
+// BRL with one USD row so the per-currency money.ts formatting is exercised.
+//
+// [idSuffix, status, nickname, priceSuffix, amountCents, currency, periodEndDays, cancelAtPeriodEnd, custSuffix]
+const SUBSCRIPTION_ROWS: Array<
+  [string, string, string, string, number, string, number, boolean, string]
+> = [
+  ["1PdEnt0001", "active", "Enterprise Anual", "ent_year", 1_490_000, "brl", 318, false, "Ent01"],
+  ["1PdPro0002", "active", "Pro Mensal", "pro_month", 49_900, "brl", 12, false, "Pro02"],
+  ["1PdPro0003", "active", "Pro Mensal", "pro_month", 49_900, "brl", 19, true, "Pro03"],
+  ["1PdTrl0004", "trialing", "Pro Mensal", "pro_month", 49_900, "brl", 5, false, "Trl04"],
+  ["1PdDue0005", "past_due", "Studio Mensal", "studio_month", 89_900, "brl", -2, false, "Due05"],
+  ["1PdUsd0006", "active", "Global Team", "team_usd", 9_900, "usd", 27, false, "Usd06"]
+];
+
+export function mockSubscriptions(): SubscriptionItem[] {
+  const now = Math.floor(Date.now() / 1000);
+  return SUBSCRIPTION_ROWS.map(
+    ([idSuffix, status, nickname, priceSuffix, amount, currency, periodEndDays, cancelAtPeriodEnd, custSuffix]) => ({
+      id: "sub_" + idSuffix,
+      status,
+      planNickname: nickname,
+      planPriceId: "price_" + priceSuffix,
+      amount,
+      currency,
+      currentPeriodEnd: now + periodEndDays * 86_400,
+      cancelAtPeriodEnd,
+      customer: "cus_" + custSuffix
+    })
+  );
+}
+
+// ---------------------------------------------------------- payment intents
+
+// 8 PaymentIntents with mixed statuses for the Payment Intents roster: a few
+// succeeded, one processing, one requires_payment_method (the honest stuck
+// signal), one requires_capture (manual capture pending), one canceled. Created
+// times descending; mostly BRL with one USD row. NO customer data (rule #0).
+//
+// [idSuffix, status, amountCents, currency, minutesAgo, captureMethod]
+const PAYMENT_INTENT_ROWS: Array<[string, string, number, string, number, string]> = [
+  ["3PqB1succeeded01", "succeeded", 48_200, "brl", 6, "automatic"],
+  ["3PqB1succeeded02", "succeeded", 159_000, "brl", 28, "automatic"],
+  ["3PqB1processing03", "processing", 12_900, "brl", 41, "automatic"],
+  ["3PqB1capture00004", "requires_capture", 89_900, "brl", 73, "manual"],
+  ["3PqB1nopm00000005", "requires_payment_method", 23_400, "brl", 119, "automatic"],
+  ["3PqB1usd00000006", "succeeded", 14_900, "usd", 142, "automatic"],
+  ["3PqB1canceled0007", "canceled", 7_500, "brl", 205, "automatic"],
+  ["3PqB1succeeded08", "succeeded", 4_990, "brl", 268, "automatic"]
+];
+
+export function mockPaymentIntents(): PaymentIntentItem[] {
+  const now = Math.floor(Date.now() / 1000);
+  return PAYMENT_INTENT_ROWS.map(([idSuffix, status, amount, currency, minutesAgo, captureMethod]) => ({
+    id: "pi_" + idSuffix,
+    status,
+    amount,
+    currency,
+    created: now - minutesAgo * 60,
+    captureMethod
+  }));
+}
+
+// ------------------------------------------------------------ charge detail
+
+// Drill-down fixtures keyed by charge id, matching two rows from CHARGE_ROWS:
+//  - ch_3PqA1refunded003 → succeeded + fully refunded, with a refunds[] history.
+//  - ch_3PqA1failed00006 → failed, with a Stripe failureCode/failureMessage and
+//    no refunds (a declined charge moves no money).
+// Every other charge id resolves to a synthesized succeeded detail (below), so
+// the drill-down never dead-ends. Refs are opaque only (rule #0); failureMessage
+// is Stripe's own decline string, not customer data.
+const CHARGE_DETAILS: Record<
+  string,
+  Omit<ChargeDetail, "id" | "created"> & { minutesAgo: number; refundsMinutesAgo: number[] }
+> = {
+  ch_3PqA1refunded003: {
+    amount: 89_900,
+    currency: "brl",
+    status: "succeeded",
+    refunded: true,
+    refundedAmount: 89_900,
+    paymentIntent: "pi_3PqA1pi0003",
+    failureCode: "",
+    failureMessage: "",
+    minutesAgo: 64,
+    refundsMinutesAgo: [40, 12],
+    refunds: [
+      { id: "re_3PqA1refund0001", amount: 49_900, reason: "requested_by_customer", created: 0 },
+      { id: "re_3PqA1refund0002", amount: 40_000, reason: "requested_by_customer", created: 0 }
+    ]
+  },
+  ch_3PqA1failed00006: {
+    amount: 23_400,
+    currency: "brl",
+    status: "failed",
+    refunded: false,
+    refundedAmount: 0,
+    paymentIntent: "pi_3PqA1pi0006",
+    failureCode: "card_declined",
+    failureMessage: "Your card was declined.",
+    minutesAgo: 168,
+    refundsMinutesAgo: [],
+    refunds: []
+  }
+};
+
+/**
+ * The `charge-detail` fixture for a given charge id. Returns a fully-formed
+ * detail for the two scripted charges (refunded + failed); for any other charge
+ * id it synthesizes a succeeded, un-refunded detail so the drill-down always
+ * resolves under `?mock`. Created/refund timestamps are recent epochs.
+ */
+export function mockChargeDetail(chargeId: string): ChargeDetail {
+  const now = Math.floor(Date.now() / 1000);
+  const scripted = CHARGE_DETAILS[chargeId];
+  if (scripted) {
+    const { minutesAgo, refundsMinutesAgo, refunds, ...rest } = scripted;
+    return {
+      id: chargeId,
+      created: now - minutesAgo * 60,
+      ...rest,
+      refunds: refunds.map((r, i) => ({
+        ...r,
+        created: now - (refundsMinutesAgo[i] ?? 0) * 60
+      }))
+    };
+  }
+  // Fallback: a plain succeeded charge, no failure, no refunds.
+  return {
+    id: chargeId,
+    amount: 48_200,
+    currency: "brl",
+    status: "succeeded",
+    created: now - 7 * 60,
+    refunded: false,
+    refundedAmount: 0,
+    paymentIntent: "pi_" + chargeId.replace(/^ch_/, ""),
+    failureCode: "",
+    failureMessage: "",
+    refunds: []
+  };
 }

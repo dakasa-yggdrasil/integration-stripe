@@ -82,6 +82,118 @@ export interface ChargeItem {
   paymentIntent: string;
 }
 
+/**
+ * A row from `list-subscriptions` (one Stripe subscription).
+ *
+ * The adapter projects GET /v1/subscriptions →
+ * `{id, status, plan{nickname,price_id}, amount(int smallest unit), currency,
+ * current_period_end(unix), cancel_at_period_end(bool), customer}`.
+ *
+ * RULE #0: `customer` arrives on the wire as an OPAQUE Stripe ref (`cus_…`) —
+ * never a name or email. The surface shows it (if at all) only as that opaque
+ * id; the normalizer below never reads a name/email field, and the table has NO
+ * customer-name column. We carry the ref so an operator can correlate, nothing
+ * more.
+ */
+export interface SubscriptionItem {
+  /** Subscription id (`sub_…`) — the opaque ref shown mono. */
+  id: string;
+  /** Subscription status ("active" / "past_due" / "canceled" / "trialing" / …). */
+  status: string;
+  /** The plan's human nickname ("" when Stripe carries none). */
+  planNickname: string;
+  /** The plan's price id (`price_…`), an opaque config ref. */
+  planPriceId: string;
+  /** Recurring amount in the smallest currency unit. */
+  amount: number;
+  /** Lower-case ISO currency code. */
+  currency: string;
+  /** Current period end as a Unix epoch (seconds) — the next renew/charge date. */
+  currentPeriodEnd: number;
+  /** True when the subscription is set to end at period end (no auto-renew). */
+  cancelAtPeriodEnd: boolean;
+  /** The opaque customer ref (`cus_…`), "" when absent — NEVER a name/email. */
+  customer: string;
+}
+
+/**
+ * A row from `list-payment-intents` (one Stripe PaymentIntent).
+ *
+ * The adapter projects GET /v1/payment_intents →
+ * `{id, status, amount, currency, created(unix), capture_method}`. No customer
+ * data is projected (rule #0).
+ */
+export interface PaymentIntentItem {
+  /** PaymentIntent id (`pi_…`) — the opaque ref shown mono. */
+  id: string;
+  /** PI status ("succeeded" / "requires_payment_method" / "canceled" / …). */
+  status: string;
+  /** Amount in the smallest currency unit. */
+  amount: number;
+  /** Lower-case ISO currency code. */
+  currency: string;
+  /** Creation time as a Unix epoch (seconds). */
+  created: number;
+  /** Capture method ("automatic" / "manual"). */
+  captureMethod: string;
+}
+
+/**
+ * One refund inside a {@link ChargeDetail} (from `charge-detail`'s `refunds`).
+ *
+ * RULE #0: only the opaque refund id + amount/reason/created — never any
+ * customer ref. A refund is money already moved (read-only history here).
+ */
+export interface RefundItem {
+  /** Refund id (`re_…`) — opaque ref shown mono. */
+  id: string;
+  /** Refunded amount in the smallest currency unit. */
+  amount: number;
+  /** Stripe's refund reason ("requested_by_customer" / "fraudulent" / …), or "". */
+  reason: string;
+  /** Refund creation time as a Unix epoch (seconds). */
+  created: number;
+}
+
+/**
+ * The `charge-detail` object (param `charge_id`) — the drill-down read behind a
+ * charge id in the Reconciliação roster.
+ *
+ * The adapter projects GET /v1/charges/{id} →
+ * `{id, amount, currency, status, created(unix), refunded(bool),
+ * refundedAmount(int), payment_intent, failureCode, failureMessage,
+ * refunds:[{id, amount, reason, created}]}`.
+ *
+ * RULE #0: only opaque refs (`id`, `payment_intent`, refund ids) are read —
+ * never the customer name/email Stripe carries on `billing_details`. The detail
+ * view NEVER renders a customer identity; `failureMessage` is Stripe's own
+ * decline string (e.g. "Your card was declined."), not customer data.
+ */
+export interface ChargeDetail {
+  /** Charge id (`ch_…`). */
+  id: string;
+  /** Amount in the smallest currency unit. */
+  amount: number;
+  /** Lower-case ISO currency code. */
+  currency: string;
+  /** Charge status ("succeeded" / "pending" / "failed"). */
+  status: string;
+  /** Creation time as a Unix epoch (seconds). */
+  created: number;
+  /** Whether the charge was (fully) refunded. */
+  refunded: boolean;
+  /** Total amount refunded so far, in the smallest currency unit. */
+  refundedAmount: number;
+  /** The opaque payment_intent ref (`pi_…`), "" when absent. */
+  paymentIntent: string;
+  /** Stripe failure code when the charge failed (e.g. "card_declined"), or "". */
+  failureCode: string;
+  /** Stripe's failure message when the charge failed, or "". */
+  failureMessage: string;
+  /** The charge's refunds (money-already-moved history), newest first. */
+  refunds: RefundItem[];
+}
+
 /** The envelope every list surface query returns: `{ items, has_more }`. */
 export interface ItemsEnvelope<T> {
   items: T[];

@@ -9,18 +9,20 @@ import {
   useStripePulse,
   useWebhookEndpoints,
   useCharges,
+  useSubscriptions,
+  usePaymentIntents,
   primaryBrl,
   formatMoneyCompact,
   formatMoney,
-  isEndpointDisabled,
+  isCancelAtPeriodEnd,
+  isSubscriptionActive,
   mockEnabled,
   mockCollaboratorScope,
   MOCK_INSTANCE_ID,
   MOCK_INSTANCE_LABEL
 } from "../data";
-import type { WebhookEndpointItem } from "../data";
-import { KpiStrip, AttentionBand, PillarPreview } from "./home-parts";
-import type { PillarRow } from "./home-parts";
+import { KpiStrip, AttentionBand, NavGroups } from "./home-parts";
+import type { NavGroupSpec } from "./home-parts";
 
 /* ---------------------------------------------------------------- layout */
 
@@ -53,19 +55,9 @@ const EYEBROW: CSSProperties = {
   color: "var(--honey)"
 };
 
-// Pillar grid: 4 columns → 2 → 1 by host width (not viewport).
-const PILLAR_GRID = `
-  .st-home-pillars {
-    display: grid;
-    gap: var(--sp-4);
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    align-items: stretch;
-  }
-  @container (max-width: 900px) {
-    .st-home-pillars { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
+// Narrow-host header reflow (by host width, not viewport).
+const HEADER_REFLOW = `
   @container (max-width: 560px) {
-    .st-home-pillars { grid-template-columns: 1fr; }
     .st-home-header { flex-direction: column; align-items: flex-start; }
   }
 `;
@@ -88,22 +80,6 @@ function headline(parts: {
   ].join(" · ");
 }
 
-function webhookRows(items: WebhookEndpointItem[]): PillarRow[] {
-  // Governance first: disabled endpoints. If none, a representative sample.
-  const disabled = items.filter(isEndpointDisabled);
-  const shown = (disabled.length > 0 ? disabled : items).slice(0, 3);
-  return shown.map((e) => {
-    const off = isEndpointDisabled(e);
-    return {
-      key: e.id || e.url,
-      title: e.url || e.id,
-      sub: `${e.enabledEvents.length} ${e.enabledEvents.length === 1 ? "evento" : "eventos"}`,
-      tagLabel: off ? "desativado" : "ativo",
-      tagTone: off ? ("crit" as const) : ("ok" as const)
-    };
-  });
-}
-
 /* ---------------------------------------------------------------- screen */
 
 export function Home() {
@@ -124,7 +100,9 @@ export function Home() {
 
   const pulse = useStripePulse(instanceId);
   const webhooks = useWebhookEndpoints(instanceId);
-  const charges = useCharges(instanceId, 5);
+  const charges = useCharges(instanceId, 50);
+  const subs = useSubscriptions(instanceId, 50);
+  const pis = usePaymentIntents(instanceId, 50);
 
   if (scope.isLoading || instanceLoading) {
     return (
@@ -146,19 +124,111 @@ export function Home() {
   }
 
   const availableBrl = primaryBrl(pulse.available);
-  const pendingBrl = primaryBrl(pulse.pending);
   const esteiraHealthy = pulse.webhooksDisabled === 0;
+
+  // Per-destination signals for the grouped nav (hard numbers + bad-signal pills).
+  const cancelingSubs = subs.items.filter(isCancelAtPeriodEnd).length;
+  const activeSubs = subs.items.filter(isSubscriptionActive).length;
+  const needsActionPis = pis.items.filter((p) => {
+    const st = p.status.trim().toLowerCase();
+    return st === "requires_payment_method" || st === "requires_action" || st === "requires_confirmation";
+  }).length;
+  const refundedCharges = charges.items.filter((c) => c.refunded).length;
+  const failedCharges = charges.items.filter((c) => c.status.trim().toLowerCase() === "failed").length;
 
   // The identity line: what the console IS — a payments-OPS view, with the hard
   // rule that money-movement and per-customer data are never here.
   const identityLine = [
-    "Webhooks · saldo & payouts · disputas · conciliação",
+    "Webhooks · conciliação · saldo · assinaturas · payment intents · disputas",
     "ops de pagamentos — sem dados de cliente, sem mover dinheiro"
   ].join(" · ");
 
+  // Grouped nav — a calm, scannable index over every detail page, organized by
+  // function (Ingestão / Dinheiro / Disputas). Each card carries a hard number
+  // (or honest "—" for an un-readable fact); bad signals (webhook desativado,
+  // assinatura a encerrar, PI aguardando ação, cobrança estornada/falha) surface
+  // a status pill so the operator's eye lands on them first.
+  const navGroups: NavGroupSpec[] = [
+    {
+      key: "ingestao",
+      title: "Ingestão",
+      cards: [
+        {
+          key: "webhooks",
+          label: "Webhook Health",
+          value: pulse.webhooksEnabled,
+          unit: pulse.webhooks === 1 ? "endpoint" : `de ${pulse.webhooks}`,
+          to: "/webhooks",
+          tagLabel: pulse.webhooksDisabled > 0 ? `${pulse.webhooksDisabled} desativado(s)` : undefined,
+          tagTone: "crit"
+        },
+        {
+          key: "reconciliation",
+          label: "Reconciliação",
+          value: charges.items.length,
+          unit: charges.items.length === 1 ? "cobrança" : "cobranças",
+          to: "/reconciliation",
+          tagLabel:
+            failedCharges > 0
+              ? `${failedCharges} falha(s)`
+              : refundedCharges > 0
+                ? `${refundedCharges} estorno(s)`
+                : undefined,
+          tagTone: failedCharges > 0 ? "crit" : "warn"
+        }
+      ]
+    },
+    {
+      key: "dinheiro",
+      title: "Dinheiro",
+      cards: [
+        {
+          key: "balance",
+          label: "Saldo & Payouts",
+          value: formatMoneyCompact(availableBrl, "brl"),
+          unit: "disponível",
+          to: "/balance"
+        },
+        {
+          key: "subscriptions",
+          label: "Assinaturas",
+          value: activeSubs,
+          unit: subs.items.length === activeSubs ? "ativas" : `de ${subs.items.length}`,
+          to: "/subscriptions",
+          tagLabel: cancelingSubs > 0 ? `${cancelingSubs} a encerrar` : undefined,
+          tagTone: "warn"
+        },
+        {
+          key: "payment-intents",
+          label: "Payment Intents",
+          value: pis.items.length,
+          unit: pis.items.length === 1 ? "intent" : "intents",
+          to: "/payment-intents",
+          tagLabel: needsActionPis > 0 ? `${needsActionPis} aguardando` : undefined,
+          tagTone: "warn"
+        }
+      ]
+    },
+    {
+      key: "disputas",
+      title: "Disputas",
+      cards: [
+        {
+          key: "disputes",
+          label: "Disputas",
+          value: "—",
+          unit: "via ↗",
+          to: "/disputes",
+          tagLabel: "deep-link",
+          tagTone: "neutral"
+        }
+      ]
+    }
+  ];
+
   return (
     <div className="atelier" style={PAGE}>
-      <style>{PILLAR_GRID}</style>
+      <style>{HEADER_REFLOW}</style>
 
       {/* ---------- header (account identity) ---------- */}
       <header
@@ -232,69 +302,10 @@ export function Home() {
         <AttentionBand webhooks={webhooks} />
       </section>
 
-      {/* ---------- pillars (hard numbers) ---------- */}
-      <section>
-        <div className="st-home-pillars">
-          <PillarPreview
-            kicker="Webhook Health"
-            value={pulse.webhooksEnabled}
-            unit={pulse.webhooks === 1 ? "endpoint" : `de ${pulse.webhooks}`}
-            rows={webhookRows(webhooks.items)}
-            emptyLabel="Nenhum webhook endpoint configurado."
-            to="/webhooks"
-          />
-          <PillarPreview
-            kicker="Saldo & Payouts"
-            value={formatMoneyCompact(availableBrl, "brl")}
-            unit="disponível"
-            rows={[
-              {
-                key: "bal-pending",
-                title: "Pendente a liberar",
-                sub: formatMoney(pendingBrl, "brl")
-              },
-              {
-                key: "bal-payouts",
-                title: "Histórico de payouts",
-                sub: "Leitura ainda não conectada — needs-work.",
-                tagLabel: "needs-work",
-                tagTone: "neutral"
-              }
-            ]}
-            emptyLabel="Sem saldo reportado."
-            to="/balance"
-          />
-          <PillarPreview
-            kicker="Disputas"
-            value="—"
-            unit="via ↗"
-            rows={[
-              {
-                key: "disputes-note",
-                title: "Disputas & prazos",
-                sub: "Sem leitura no adapter — abra no Stripe nativo.",
-                tagLabel: "deep-link",
-                tagTone: "neutral"
-              }
-            ]}
-            emptyLabel="Sem leitura de disputas."
-            to="/disputes"
-          />
-          <PillarPreview
-            kicker="Reconciliação"
-            value={charges.items.length}
-            unit={charges.items.length === 1 ? "cobrança recente" : "cobranças recentes"}
-            rows={[
-              {
-                key: "recon-note",
-                title: "Cobranças recentes",
-                sub: "Refs opacas (id, payment_intent) — sem dados de cliente."
-              }
-            ]}
-            emptyLabel="Sem cobranças recentes."
-            to="/reconciliation"
-          />
-        </div>
+      {/* ---------- grouped navigation (every detail page, hard numbers) ---------- */}
+      <section style={{ display: "flex", flexDirection: "column", gap: "var(--sp-4)" }}>
+        <h2 style={SECTION_TITLE}>Navegação</h2>
+        <NavGroups groups={navGroups} />
       </section>
     </div>
   );

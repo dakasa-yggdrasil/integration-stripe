@@ -7,6 +7,15 @@ export type { BalanceQueryResult } from "./useBalance";
 export { useCharges } from "./useCharges";
 export type { ChargesResult } from "./useCharges";
 
+export { useSubscriptions, isCancelAtPeriodEnd, isSubscriptionActive } from "./useSubscriptions";
+export type { SubscriptionsResult } from "./useSubscriptions";
+
+export { usePaymentIntents } from "./usePaymentIntents";
+export type { PaymentIntentsResult } from "./usePaymentIntents";
+
+export { useChargeDetail } from "./useChargeDetail";
+export type { ChargeDetailResult } from "./useChargeDetail";
+
 export { useStripePulse, primaryBrl } from "./useStripePulse";
 export type { StripePulse } from "./useStripePulse";
 
@@ -20,7 +29,11 @@ export {
   payoutsHref,
   disputesHref,
   paymentsHref,
-  paymentIntentHref
+  paymentIntentHref,
+  subscriptionsHref,
+  subscriptionHref,
+  paymentIntentsHref,
+  chargeHref
 } from "./stripeLink";
 
 export { formatMoney, formatMoneyCompact, currencyDecimals } from "./money";
@@ -38,5 +51,9 @@ export type {
   BalanceAmount,
   BalanceResult,
   ChargeItem,
+  SubscriptionItem,
+  PaymentIntentItem,
+  RefundItem,
+  ChargeDetail,
   ItemsEnvelope
 } from "./types";

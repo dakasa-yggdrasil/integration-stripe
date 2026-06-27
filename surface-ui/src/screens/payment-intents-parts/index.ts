@@ -1,0 +1,1 @@
+export { PaymentIntentsTable } from "./PaymentIntentsTable";

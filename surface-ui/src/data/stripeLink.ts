@@ -67,3 +67,31 @@ export function paymentIntentHref(base: string, pi: string): string {
   if (host === "" || pi.trim() === "") return "";
   return `${host}/payments/${encodeURIComponent(pi)}`;
 }
+
+/** The native Stripe subscriptions list page, or "" when the host is unknown. */
+export function subscriptionsHref(base: string): string {
+  const host = normalizeStripeBase(base);
+  if (host === "") return "";
+  return `${host}/subscriptions`;
+}
+
+/** A single subscription's detail page (`/subscriptions/{id}`), or "". */
+export function subscriptionHref(base: string, id: string): string {
+  const host = normalizeStripeBase(base);
+  if (host === "" || id.trim() === "") return "";
+  return `${host}/subscriptions/${encodeURIComponent(id)}`;
+}
+
+/** The native Stripe payment-intents list page, or "" when the host is unknown. */
+export function paymentIntentsHref(base: string): string {
+  const host = normalizeStripeBase(base);
+  if (host === "") return "";
+  return `${host}/payments`;
+}
+
+/** A single charge's payment detail page (`/payments/{ch}`), or "". */
+export function chargeHref(base: string, charge: string): string {
+  const host = normalizeStripeBase(base);
+  if (host === "" || charge.trim() === "") return "";
+  return `${host}/payments/${encodeURIComponent(charge)}`;
+}
