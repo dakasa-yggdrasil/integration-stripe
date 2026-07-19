@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   emit:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.YGGDRASIL_DEPLOY_EMIT_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Notify yggdrasil-core of deploy event
