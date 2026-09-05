@@ -40,7 +40,7 @@ The adapter exposes three listeners (see [Operations](OPERATIONS.md) for ports):
 ### Production image
 
 ```
-ghcr.io/dakasa-yggdrasil/integration-stripe:v2.2.4
+ghcr.io/dakasa-yggdrasil/integration-stripe:v3.0.0
 ```
 
 Published by `.github/workflows/release.yml` on tag push (`v*`) and on pushes to
@@ -63,9 +63,9 @@ curl -s localhost:8081/rpc/describe | jq '{
 }'
 ```
 
-Expected: `provider: "stripe"`, `version: "2.4.0"`, `transport: "http_json"`,
-`capabilities: ["describe","execute"]`, 10 resource types, 20 action-catalog
-entries (19 capabilities + 1 reactor).
+Expected: `provider: "stripe"`, `version: "3.0.0"`, `transport: "http_json"`,
+`capabilities: ["describe","execute"]`, 10 resource types, and 22
+action-catalog entries (20 capabilities + 2 framework reactors).
 
 ## 3. Register the integration type
 
@@ -94,7 +94,7 @@ spec:
   type_ref: { namespace: global, name: stripe }
   config:
     stripe_account_id: ""                  # set acct_* for Stripe Connect
-    stripe_api_version: "2024-12-18.acacia"
+    stripe_api_version: "2025-10-29.clover"
     webhook_tolerance_seconds: 300
   credentials_ref:
     secret_name: dakasa-stripe-credentials
@@ -152,26 +152,42 @@ yggdrasil workflow run stripe-charge-customer --namespace dakasa
 `amount`, `currency`, and `next_action` (populated when 3DS/SCA is required).
 Full IO schemas: [Capabilities](CAPABILITIES.md).
 
-## 6. Wire up webhooks (optional but typical)
+## 6. Wire up webhooks
 
-To turn Stripe events into workflow triggers:
+Treat a provider-side endpoint and its signing secret as one resource graph:
 
-1. Ensure a Stripe webhook endpoint pointing at the adapter:
+1. Call `observe_webhook_endpoints` and match the exact destination URL.
+2. If exactly one endpoint exists, call `ensure_webhook_endpoint` with its
+   exact event allowlist and desired `disabled` state. Ensure adopts or updates
+   only and never returns a secret.
+3. If none exists, use `provision_webhook_endpoint` only inside a compatible
+   Core workflow whose immediately following step is a
+   `secrets-management/ensure_secret` sink. The integration instance must also
+   set `allow_sensitive_webhook_endpoint_creation=true` and a stable
+   `webhook_endpoint_provisioning_generation` for this attempt. Core keeps
+   `secret` transient, sends it only to that sink, and redacts the persisted run.
+   Pass `connect` explicitly and pin `api_version: 2025-10-29.clover`.
+4. Return the instance opt-in to `false`, observe the exact endpoint, and run a
+   provider-signed callback canary before declaring the integration ready.
+5. For a Yggdrasil-owned reactor destination, Stripe POSTs to
+   `/webhooks/stripe/{instance_id}` and the adapter emits an RTA event. For an
+   application backend such as DaKasa payments, provision that backend's exact
+   public route instead. Do not substitute the adapter reactor URL for the
+   business receiver.
 
-   ```bash
-   yggdrasil workflow run --capability ensure_webhook_endpoint \
-     --integration dakasa/integration-stripe-dakasa \
-     --input '{"url":"https://staging.dakasa.io/webhooks/stripe/dakasa","enabled_events":["*"]}'
-   ```
+Do not run the create action from a direct CLI call or a Core that lacks the
+transient sink contract. Do not copy the create-only secret through workflow
+inputs, logs, events, or normal observation output. Do not supply a custom
+`idempotency_key`; the adapter owns the deterministic key for this create-only
+operation.
 
-   Save the returned `secret` (`whsec_*`) into your instance's
-   `stripe_webhook_secret` credential.
-
-2. Stripe now POSTs deliveries to
-   `/webhooks/stripe/{instance_id}`. The adapter verifies the signature,
-   deduplicates, and emits an RTA event whose routing key (e.g.
-   `rta.payments.intent_succeeded`) can trigger a subscribed workflow. See the
-   sequence diagram in [Operations](OPERATIONS.md).
+If provider creation completed but the response was lost before persistence,
+do not guess or retry after an unbounded delay. Observe the exact endpoint,
+destroy that newly created endpoint before application traffic is launched,
+change `webhook_endpoint_provisioning_generation`, and run a fresh adjacent
+producer/sink workflow. Reusing the generation may replay the cached response
+for the deleted endpoint. Stripe creates webhook endpoints enabled, so the
+receiving route must already be deployed.
 
 ## 7. Verify the run
 

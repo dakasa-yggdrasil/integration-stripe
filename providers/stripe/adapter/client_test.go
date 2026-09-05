@@ -48,6 +48,17 @@ func TestNewStripeClient_PerInstanceKey_Isolated(t *testing.T) {
 	require.NotEqual(t, keys[0], keys[1], "each instance must send its own API key")
 }
 
+func TestNewStripeClientDisablesStripeSDKResponseLogging(t *testing.T) {
+	client, err := NewStripeClient("sk_test", "", StripeAPIVersion)
+	require.NoError(t, err)
+
+	implementation, ok := client.V1WebhookEndpoints.B.(*stripe.BackendImplementation)
+	require.True(t, ok, "webhook backend must expose its adapter-owned configuration")
+	logger, ok := implementation.LeveledLogger.(*stripe.LeveledLogger)
+	require.True(t, ok, "webhook backend must use the explicit null logger")
+	require.Equal(t, stripe.LevelNull, logger.Level, "provider bodies must not reach the SDK logger")
+}
+
 func TestIdempotencyKey_DerivedFromInputOrSha256Stable(t *testing.T) {
 	// Provided wins over derivation.
 	require.Equal(t, "user_supplied",

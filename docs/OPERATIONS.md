@@ -127,6 +127,9 @@ failed events for 72h, so short rollback windows lose no data.
 |---|---|---|
 | `404 unknown instance` on webhook | `instance_id` path segment not in the loaded instance set | Confirm the instance is registered and `STRIPE_INSTANCES_CONFIG` / env fallback hydrated it. |
 | `400 invalid signature`, `signature_failures_total` climbing | wrong `stripe_webhook_secret`, clock skew, or a proxy mutating the body | Verify the secret matches the Stripe endpoint; check tolerance window and that no middleware rewrites the raw body. |
+| `ensure_webhook_endpoint` reports the URL absent | ensure is adopt/update-only so no create-only secret can leak through normal reconcile output | Run the guarded provision workflow with an immediately following transient `secrets-management/ensure_secret` sink. Never create from a direct call. |
+| `provision_webhook_endpoint` rejects the transient secret sink | instance opt-in is false, Core did not reserve an adjacent sink, or the sink shape is not exact | Keep the action blocked until Core, SDK, Stripe, and secrets-management sensitive-output contracts are deployed together. |
+| exact URL adoption is ambiguous | more than one endpoint has the same destination URL | Observe the candidates, choose the exact external ID, and remove duplicates only through an approved destroy plan. |
 | Execute fails `stripe api key is required` | credentials not reaching `Execute()` (no `stripe_api_key`/`stripe_secret_key` in the instance's `credentials_ref`) | Ensure the secret store key is bound; see [CHANGELOG](../CHANGELOG.md) v2.2.2. |
 | `unsupported capability "<x>"` | operation not in `SupportedExecuteOperations` (e.g. a typo or the reactor name) | Use a canonical capability; `stripe_webhook_received` is reactor-only. |
 | `unsupported_operation` from `manage_connect_account` | `operation` not `create`/`get`/`update` | Phase 1 supports those three only. |

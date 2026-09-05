@@ -15,16 +15,17 @@ import (
 	"strings"
 
 	"github.com/dakasa-yggdrasil/integration-stripe/family/contract"
+	"github.com/stripe/stripe-go/v83"
 )
 
 const (
 	Provider        = "stripe"
 	IntegrationType = "stripe"
-	AdapterVersion  = "2.4.0"
+	AdapterVersion  = "3.0.0"
 	// StripeAPIVersion pins the Stripe API version. Bumping requires a
 	// full integration test cycle + adapter version bump. Documented in
 	// README.md and integration_type manifest spec.adapter.version notes.
-	StripeAPIVersion = "2024-12-18.acacia"
+	StripeAPIVersion = stripe.APIVersion
 
 	// Canonical (v2.0.0) capability names — ensure_/observe_/destroy_
 	// per the universal naming convention.
@@ -43,9 +44,10 @@ const (
 	OperationObserveCharges = "observe_charges"
 	OperationObserveBalance = "observe_balance"
 
-	OperationEnsureWebhookEndpoint   = "ensure_webhook_endpoint"
-	OperationObserveWebhookEndpoints = "observe_webhook_endpoints"
-	OperationDestroyWebhookEndpoint  = "destroy_webhook_endpoint"
+	OperationEnsureWebhookEndpoint    = "ensure_webhook_endpoint"
+	OperationProvisionWebhookEndpoint = "provision_webhook_endpoint"
+	OperationObserveWebhookEndpoints  = "observe_webhook_endpoints"
+	OperationDestroyWebhookEndpoint   = "destroy_webhook_endpoint"
 
 	// Kept ops — allowlisted action-shaped helpers + state transitions
 	// that don't collapse cleanly into the ensure/observe/destroy triple.
@@ -97,6 +99,7 @@ var SupportedExecuteOperations = []string{
 	OperationObserveCharges,
 	OperationObserveBalance,
 	OperationEnsureWebhookEndpoint,
+	OperationProvisionWebhookEndpoint,
 	OperationObserveWebhookEndpoints,
 	OperationDestroyWebhookEndpoint,
 	OperationCreateRefund,
@@ -232,6 +235,33 @@ func Describe() contract.AdapterDescribeResponse {
 					GroupLocale: map[string]string{"pt-BR": "Webhook", "en-US": "Webhook"},
 					Order:       4,
 				},
+				"allow_sensitive_webhook_endpoint_creation": {
+					Type:        "boolean",
+					Default:     false,
+					Description: "Break-glass opt-in for provision_webhook_endpoint. Creation still requires a Core-authorized transient next-step secret sink.",
+					Label:       "Allow sensitive webhook creation",
+					LabelLocale: map[string]string{"pt-BR": "Permitir criação sensível de webhook", "en-US": "Allow sensitive webhook creation"},
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Opt-in emergencial para provision_webhook_endpoint. A criação ainda exige um sink transitório autorizado pelo Core no passo imediatamente seguinte.",
+						"en-US": "Break-glass opt-in for provision_webhook_endpoint. Creation still requires a Core-authorized transient sink in the immediately following step.",
+					},
+					Group:       "Webhook",
+					GroupLocale: map[string]string{"pt-BR": "Webhook", "en-US": "Webhook"},
+					Order:       5,
+				},
+				"webhook_endpoint_provisioning_generation": {
+					Type:        "string",
+					Description: "Operator-controlled attempt generation for create-only webhook idempotency. Required when sensitive creation is enabled and must change after explicit destroy before recovery recreation.",
+					Label:       "Webhook provisioning generation",
+					LabelLocale: map[string]string{"pt-BR": "Geração de provisionamento do webhook", "en-US": "Webhook provisioning generation"},
+					DescriptionLocale: map[string]string{
+						"pt-BR": "Geração da tentativa controlada pelo operador. Obrigatória para criação sensível e deve mudar após um destroy explícito antes da recriação de recuperação.",
+						"en-US": "Operator-controlled attempt generation. Required for sensitive creation and must change after explicit destroy before recovery recreation.",
+					},
+					Group:       "Webhook",
+					GroupLocale: map[string]string{"pt-BR": "Webhook", "en-US": "Webhook"},
+					Order:       6,
+				},
 				// Operator-injected non-secret metadata accepted by every
 				// stripe instance. Declared so yggdrasil-core does not
 				// reject the config at validation time. The adapter
@@ -251,7 +281,7 @@ func Describe() contract.AdapterDescribeResponse {
 					},
 					Group:       "Advanced",
 					GroupLocale: map[string]string{"pt-BR": "Avançado", "en-US": "Advanced"},
-					Order:       5,
+					Order:       7,
 					Format:      "uri",
 				},
 				"environment": {
@@ -266,7 +296,7 @@ func Describe() contract.AdapterDescribeResponse {
 					},
 					Group:       "Advanced",
 					GroupLocale: map[string]string{"pt-BR": "Avançado", "en-US": "Advanced"},
-					Order:       6,
+					Order:       8,
 				},
 				"provider": {
 					Type:        "string",
@@ -280,7 +310,7 @@ func Describe() contract.AdapterDescribeResponse {
 					},
 					Group:       "Advanced",
 					GroupLocale: map[string]string{"pt-BR": "Avançado", "en-US": "Advanced"},
-					Order:       7,
+					Order:       9,
 				},
 			},
 		},
@@ -394,7 +424,8 @@ func describeActionCatalog() []contract.IntegrationActionDefinition {
 		{Name: OperationObserveBalance, Description: "Observe the Stripe account balance. GET /v1/balance — returns available + pending arrays per currency.", ResourceTypes: []string{resourceBalance}, Idempotent: true},
 
 		// webhook_endpoint triple.
-		{Name: OperationEnsureWebhookEndpoint, Description: "Ensure a Stripe WebhookEndpoint exists for the URL + events. POST when absent, PATCH (URL/enabled_events) when present.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
+		{Name: OperationEnsureWebhookEndpoint, Description: "Adopt a Stripe WebhookEndpoint by exact URL or ID and reconcile its mutable state. Refuses to create because Stripe returns the signing secret only once.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
+		{Name: OperationProvisionWebhookEndpoint, Description: "Create a Stripe WebhookEndpoint once, only when Core supplies a transient next-step secret sink handshake and the integration instance explicitly permits sensitive creation. Recovery after explicit destroy requires a new operator-controlled provisioning generation.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: false},
 		{Name: OperationObserveWebhookEndpoints, Description: "Observe Stripe WebhookEndpoints. Filter {id} → single; otherwise paginated list.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
 		{Name: OperationDestroyWebhookEndpoint, Description: "Destroy a Stripe WebhookEndpoint. DELETE /v1/webhook_endpoints/{id}. 404 → already-absent success.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
 
@@ -430,8 +461,13 @@ func actionCategory(name string) string {
 }
 
 func idempotentExecuteOperations() []string {
-	out := make([]string, 0, len(SupportedExecuteOperations))
-	out = append(out, SupportedExecuteOperations...)
+	out := make([]string, 0, len(SupportedExecuteOperations)-1)
+	for _, operation := range SupportedExecuteOperations {
+		if operation == OperationProvisionWebhookEndpoint {
+			continue
+		}
+		out = append(out, operation)
+	}
 	return out
 }
 

@@ -26,6 +26,8 @@ type rpcResponse struct {
 	Error *rpcError `json:"error,omitempty"`
 }
 
+const sensitiveOperationFailureMessage = "sensitive operation failed"
+
 // success returns a successful JSON envelope for the SDK handler.
 func success(data any) ([]byte, string, error) {
 	body, err := json.Marshal(rpcResponse{OK: true, Data: data})
@@ -51,6 +53,28 @@ func failure(code string, cause error, logger *zap.Logger) ([]byte, string, erro
 		Error: &rpcError{
 			Code:    code,
 			Message: cause.Error(),
+		},
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return body, "application/json", nil
+}
+
+// sensitiveFailure deliberately has no cause argument. Provider diagnostics
+// for create-only secret operations may reflect a one-time value, so neither
+// the adapter log nor the RPC envelope may observe that error text.
+func sensitiveFailure(code string, logger *zap.Logger) ([]byte, string, error) {
+	if logger != nil {
+		logger.Error("sensitive adapter rpc handler failed",
+			zap.String("error_code", code),
+		)
+	}
+	body, err := json.Marshal(rpcResponse{
+		OK: false,
+		Error: &rpcError{
+			Code:    code,
+			Message: sensitiveOperationFailureMessage,
 		},
 	})
 	if err != nil {

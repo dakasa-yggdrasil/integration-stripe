@@ -26,18 +26,23 @@ func NewStripeClient(apiKey, baseURL, apiVersion string) (*stripe.Client, error)
 		return nil, fmt.Errorf("stripe api key is required")
 	}
 
-	var opts []stripe.ClientOption
+	// stripe-go logs provider response bodies on decode and API errors by
+	// default. A webhook create response may contain the one-time signing
+	// secret, including when malformed or truncated, so adapter-owned clients
+	// must never inherit the SDK stderr logger.
+	cfg := &stripe.BackendConfig{
+		LeveledLogger: &stripe.LeveledLogger{Level: stripe.LevelNull},
+	}
 	if strings.TrimSpace(baseURL) != "" {
-		cfg := &stripe.BackendConfig{URL: stripe.String(baseURL)}
+		cfg.URL = stripe.String(baseURL)
 		if strings.TrimSpace(apiVersion) != "" {
 			// stripe.BackendConfig has no public APIVersion field in
 			// v83; the version is encoded by the generated client per
 			// call. We keep the parameter for forward compatibility.
 			_ = apiVersion
 		}
-		opts = append(opts, stripe.WithBackends(stripe.NewBackendsWithConfig(cfg)))
 	}
-	return stripe.NewClient(apiKey, opts...), nil
+	return stripe.NewClient(apiKey, stripe.WithBackends(stripe.NewBackendsWithConfig(cfg))), nil
 }
 
 // SetStripeClientForTest swaps a per-instance client with a custom one,

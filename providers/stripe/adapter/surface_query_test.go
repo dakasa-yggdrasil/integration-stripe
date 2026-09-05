@@ -46,7 +46,7 @@ func TestOnSurfaceQuery_ListWebhookEndpoints(t *testing.T) {
 		require.Equal(t, "/v1/webhook_endpoints", r.URL.Path)
 		require.Equal(t, "GET", r.Method)
 		_, _ = w.Write([]byte(`{"object":"list","has_more":false,"data":[
-			{"id":"we_1","url":"https://a.dakasa.me/wh","status":"enabled","enabled_events":["payment_intent.succeeded","charge.refunded"],"api_version":"2024-12-18.acacia"},
+			{"id":"we_1","url":"https://a.dakasa.me/wh","status":"enabled","enabled_events":["payment_intent.succeeded","charge.refunded"],"api_version":"2025-10-29.clover"},
 			{"id":"we_2","url":"https://b.dakasa.me/wh","status":"disabled","enabled_events":["*"],"api_version":""}
 		]}`))
 	}))
@@ -61,7 +61,7 @@ func TestOnSurfaceQuery_ListWebhookEndpoints(t *testing.T) {
 	require.Equal(t, "we_1", first["id"])
 	require.Equal(t, "https://a.dakasa.me/wh", first["url"])
 	require.Equal(t, "enabled", first["status"])
-	require.Equal(t, "2024-12-18.acacia", first["api_version"])
+	require.Equal(t, "2025-10-29.clover", first["api_version"])
 	events, ok := first["enabled_events"].([]string)
 	require.True(t, ok, "enabled_events must be []string, got %T", first["enabled_events"])
 	require.Equal(t, []string{"payment_intent.succeeded", "charge.refunded"}, events)

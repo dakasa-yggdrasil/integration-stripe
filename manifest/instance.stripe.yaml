@@ -12,7 +12,7 @@ spec:
     endpoints:
       describe: /rpc/describe
       execute: /rpc/execute
-    stripe_api_version: "2024-12-18.acacia"   # documented in README + spec.adapter
+    stripe_api_version: "2025-10-29.clover"   # pinned by stripe-go/v83
   resource_types:
     - name: payment
       canonical_prefix: thirdparty.stripe.payment
@@ -33,7 +33,7 @@ spec:
   type_ref: { namespace: global, name: stripe }
   config:
     stripe_account_id: ""
-    stripe_api_version: "2024-12-18.acacia"
+    stripe_api_version: "2025-10-29.clover"
     webhook_tolerance_seconds: 300
   credentials_ref:
     secret_name: dakasa-stripe-credentials
@@ -50,7 +50,7 @@ spec:
   type_ref: { namespace: global, name: stripe }
   config:
     stripe_account_id: "acct_1AcmeXYZ"
-    stripe_api_version: "2024-12-18.acacia"
+    stripe_api_version: "2025-10-29.clover"
     webhook_tolerance_seconds: 300
   credentials_ref:
     secret_name: acme-stripe-credentials
