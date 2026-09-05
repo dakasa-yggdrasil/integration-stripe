@@ -33,7 +33,7 @@ deliveries back into core as RTA event envelopes.
 
 ## Capability surface
 
-19 executable operations + 1 reactor. The full, authoritative list is
+21 executable operations + 1 inbound webhook reactor. The full, authoritative list is
 `SupportedExecuteOperations` and the `Operation*` / `Reactor*` constants
 in `spec.go`; do not hand-maintain a second copy here. Shape:
 
@@ -44,7 +44,8 @@ in `spec.go`; do not hand-maintain a second copy here. Shape:
 - **Allowlisted action-shaped helpers** that don't collapse into the
   triple: `create_refund` and `create_payout` (money-movement),
   `create_setup_intent`, `manage_connect_account`,
-  `verify_webhook_signature` (pure HMAC helper).
+  `verify_webhook_signature` (pure HMAC helper), and the handshake-gated
+  `provision_webhook_endpoint` create-only secret path.
 - **Reactor:** `stripe_webhook_received` — NOT dispatchable via
   `execute`; framework-invoked by the webhook server on inbound delivery.
 
@@ -123,9 +124,9 @@ monorepo. Adopter-facing docs are under `docs/`.
   - Webhook: `WEBHOOK_PORT`, default **8082** (local `WebhookServer`).
   - Health/metrics: `HEALTHCHECK_PORT`, default **8080**
     (`/healthz`, `/readyz`, `/metrics`).
-- **AdapterVersion:** `spec.go` `const AdapterVersion` ≈ **2.4.0**
+- **AdapterVersion:** `spec.go` `const AdapterVersion` ≈ **3.0.0**
   (read the constant; this number moves). `StripeAPIVersion` pins the
-  Stripe API version (`2024-12-18.acacia`) — bumping it requires a full
+  Stripe API version (`2025-10-29.clover`); bumping it requires a full
   integration-test cycle + version bump.
 - **SDK pin:** `go.mod` `dakasa-yggdrasil/yggdrasil-sdk-go` ≈ **v0.8.3**
   (read `go.mod`). Stripe client: `stripe/stripe-go/v83`. Go 1.25.
@@ -136,8 +137,8 @@ monorepo. Adopter-facing docs are under `docs/`.
 manifests that get published. It is **not** auto-derived from `spec.go`
 at build time, so it can drift. As of this writing
 `manifest/integration_type.stripe.yaml` declares
-`spec.version` / `adapter.version` = **2.2.4** while `spec.go`
-`AdapterVersion` is **2.4.0** — that's a known drift.
+`spec.version` / `adapter.version` must match `spec.go` `AdapterVersion`, now
+**3.0.0**.
 
 **Do NOT edit `manifest/` as part of a CLAUDE.md / docs change.** If you
 need the manifest reconciled to `spec.go`, do it as its own deliberate

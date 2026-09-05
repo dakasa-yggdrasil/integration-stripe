@@ -5,6 +5,44 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-09-05
+
+### Security
+
+- `ensure_webhook_endpoint` now adopts by exact URL or ID and reconciles URL,
+  event set, enabled status, description, and metadata. It refuses ambiguous
+  matches and never creates an endpoint, so its normal reconcile result cannot
+  persist or emit Stripe's create-only signing secret.
+- Added `provision_webhook_endpoint` as a separate, break-glass create action.
+  It requires both the instance opt-in
+  `allow_sensitive_webhook_endpoint_creation=true` and a Core-issued
+  `transient_next_step` secret-sink handshake. It preflights exact URL
+  uniqueness, supports Stripe Connect endpoints, and marks `secret` in
+  `sensitive_output_paths` for immediate persistence.
+- Webhook creation now requires an explicit `connect` boolean and the exact
+  stripe-go/v83 event API version `2025-10-29.clover`. A Connect-wide endpoint
+  cannot be combined with a `Stripe-Account` header.
+- The instance `stripe_account_id` is now enforced as an immutable request
+  scope. A conflicting caller override fails before provider I/O.
+- Provider-backed metadata records the endpoint scope and integration instance
+  without storing the signing secret.
+- Creation propagates the caller deadline, suppresses stripe-go provider-body
+  logging, rejects caller-selected idempotency keys, and requires an
+  operator-controlled provisioning generation. Recovery after explicit destroy
+  changes that generation so Stripe cannot replay a cached response for the
+  deleted endpoint.
+- Webhook observation now includes live mode, creation time, application,
+  description, and metadata so account and configuration drift are visible.
+
+### Changed
+
+- Adapter and manifest versions are aligned at `3.0.0`. The major bump reflects
+  the intentional security break: `ensure_webhook_endpoint` no longer creates
+  an absent resource or returns a signing secret.
+- Pre-v2 aliases remain available for this release train; their removal target
+  moves to `v4.0.0` so the webhook security fix does not also break unrelated
+  payment operations.
+
 ## Unreleased — 2026-05-27
 
 ### Changed

@@ -28,7 +28,7 @@ type InstanceConfig struct {
 // WithDefaults applies the spec-mandated defaults for unset fields.
 func (c InstanceConfig) WithDefaults() InstanceConfig {
 	if strings.TrimSpace(c.APIVersion) == "" {
-		c.APIVersion = "2024-12-18.acacia"
+		c.APIVersion = "2025-10-29.clover"
 	}
 	if c.ToleranceSecs <= 0 {
 		c.ToleranceSecs = 300

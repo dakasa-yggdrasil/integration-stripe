@@ -105,14 +105,13 @@ and uses these SDK packages (verified from imports):
 
 - **`describe`** ([`message/describe.go`](../providers/stripe/message/describe.go))
   returns `adapter.Describe()`. Core calls it before every execute to verify the
-  adapter version (`2.4.0`) and provider (`stripe`). A mismatched
+  adapter version (`3.0.0`) and provider (`stripe`). A mismatched
   `expected_version` yields `version_mismatch`.
 - **`execute`** ([`message/execute.go`](../providers/stripe/message/execute.go))
   first routes the envelope through `reconcile.Dispatch` (activating §6.5
   mutation-event emission for `ensure_/observe_/destroy_` ops). Operations with
-  no registered reconciler — the allowlisted action helpers (`create_refund`,
-  `create_setup_intent`, `create_payout`, `manage_connect_account`,
-  `verify_webhook_signature`) — fall back to the legacy `adapter.Execute`
+  no registered reconciler, including the allowlisted action helpers and the
+  gated `provision_webhook_endpoint`, fall back to the legacy `adapter.Execute`
   switch. Per-request credentials (`stripe_api_key`/`stripe_secret_key`) and
   config are lifted from `integration.instance_spec` through the bridge.
 
@@ -147,14 +146,12 @@ the constant + `SupportedExecuteOperations` in `spec.go`, the resource type's
 | Component | Version |
 |---|---|
 | `yggdrasil-sdk-go` | `v0.8.3` |
-| Adapter version (`spec.go`) | `2.4.0` |
-| `integration_type` manifest | `2.2.4` |
-| Latest released `CHANGELOG` entry | `2.3.1` (plus an Unreleased section) |
+| Adapter version (`spec.go`) | `3.0.0` |
+| `integration_type` manifest | `3.0.0` |
+| Latest `CHANGELOG` entry | `3.0.0` (plus an Unreleased section) |
 | `stripe-go` | `v83 v83.1.0` |
-| Stripe API version | `2024-12-18.acacia` |
+| Stripe API version | `2025-10-29.clover` |
 
-> These three version sources (`spec.go` `AdapterVersion`, the manifest
-> `spec.version`/`image_tag`, and the changelog) are **not aligned**. The
-> describe handshake reports `2.4.0`; the published image manifest references
-> `2.2.4`. Reconcile before cutting a release so the registered catalog row,
-> the image tag, and the describe response agree.
+> These version sources are aligned at `3.0.0`. Keep the registered catalog
+> row, image tag, changelog, and describe response identical when cutting a
+> release.

@@ -18,8 +18,8 @@ import (
 func TestSpec_ProviderAndVersion(t *testing.T) {
 	require.Equal(t, "stripe", Provider)
 	require.Equal(t, "stripe", IntegrationType)
-	require.Equal(t, "2.4.0", AdapterVersion)
-	require.Equal(t, "2024-12-18.acacia", StripeAPIVersion)
+	require.Equal(t, "3.0.0", AdapterVersion)
+	require.Equal(t, "2025-10-29.clover", StripeAPIVersion)
 }
 
 // TestSpec_UIMetadata_Section15 verifies §15 INTEGRATION_CONTRACT.md
@@ -54,11 +54,12 @@ func TestSpec_UIMetadata_Section15(t *testing.T) {
 func TestSpec_Describe_HasV2Capabilities(t *testing.T) {
 	resp := Describe()
 	require.Equal(t, "stripe", resp.Provider)
-	// 20 execute (incl. on_surface_query) + 1 webhook reactor = 21 in catalog.
-	require.Len(t, resp.ActionCatalog, 21, "expected 21 actions in catalog")
+	// 21 execute (incl. on_surface_query) + 1 webhook reactor = 22 in catalog.
+	require.Len(t, resp.ActionCatalog, 22, "expected 22 actions in catalog")
 	// SupportedExecuteOperations includes on_surface_query (reactor-categorized
 	// but dispatched via Execute) and excludes the stripe_webhook_received reactor.
-	require.Len(t, SupportedExecuteOperations, 20, "expected 20 executable ops")
+	require.Len(t, SupportedExecuteOperations, 21, "expected 21 executable ops")
+	require.NotContains(t, resp.Execution.IdempotentActions, OperationProvisionWebhookEndpoint)
 }
 
 func TestExecute_EnsurePaymentIntent(t *testing.T) {
@@ -511,7 +512,7 @@ func TestSpec_SubscriptionTriple(t *testing.T) {
 func TestSpec_StripeWebhookEndpointTriple(t *testing.T) {
 	desc := Describe()
 	names := actionNames(desc)
-	for _, want := range []string{"ensure_webhook_endpoint", "observe_webhook_endpoints", "destroy_webhook_endpoint"} {
+	for _, want := range []string{"ensure_webhook_endpoint", "provision_webhook_endpoint", "observe_webhook_endpoints", "destroy_webhook_endpoint"} {
 		if !names[want] {
 			t.Errorf("expected %q present", want)
 		}
@@ -529,6 +530,11 @@ func TestSpec_StripeWebhookEndpointResourceType(t *testing.T) {
 			for i, w := range want {
 				if rt.DefaultActions[i] != w {
 					t.Errorf("expected DefaultActions[%d]=%q, got %q", i, w, rt.DefaultActions[i])
+				}
+			}
+			for _, action := range rt.DefaultActions {
+				if action == OperationProvisionWebhookEndpoint {
+					t.Fatal("provision_webhook_endpoint must remain break-glass and must not be a default action")
 				}
 			}
 			return
@@ -626,6 +632,26 @@ func TestSpec_InstanceSchemaDeclaresOperatorMetadata(t *testing.T) {
 	}
 }
 
+func TestSpec_WebhookCreationOptInDefaultsFalse(t *testing.T) {
+	property, ok := Describe().InstanceSchema.Properties["allow_sensitive_webhook_endpoint_creation"]
+	if !ok {
+		t.Fatal("InstanceSchema.Properties missing allow_sensitive_webhook_endpoint_creation")
+	}
+	if property.Type != "boolean" || property.Default != false {
+		t.Fatalf("unsafe webhook creation opt-in = %#v, want boolean default false", property)
+	}
+}
+
+func TestSpec_WebhookProvisioningGenerationIsOperatorControlled(t *testing.T) {
+	property, ok := Describe().InstanceSchema.Properties["webhook_endpoint_provisioning_generation"]
+	if !ok {
+		t.Fatal("InstanceSchema.Properties missing webhook_endpoint_provisioning_generation")
+	}
+	if property.Type != "string" || property.Default != nil {
+		t.Fatalf("webhook provisioning generation = %#v, want required-at-provision string without a default", property)
+	}
+}
+
 // TestManifest_IntegrationTypeYAML_DeclaresBothKeyAliases pins the
 // YAML manifest at `manifest/integration_type.stripe.yaml` so the
 // schema declared there stays aligned with the in-process
@@ -643,12 +669,29 @@ func TestManifest_IntegrationTypeYAML_DeclaresBothKeyAliases(t *testing.T) {
 	}
 	var doc struct {
 		Spec struct {
+			Version string `yaml:"version"`
+			Adapter struct {
+				Version  string `yaml:"version"`
+				ImageTag string `yaml:"image_tag"`
+			} `yaml:"adapter"`
 			CredentialSchema struct {
 				Properties map[string]struct {
 					Type   string `yaml:"type"`
 					Secret bool   `yaml:"secret"`
 				} `yaml:"properties"`
 			} `yaml:"credential_schema"`
+			InstanceSchema struct {
+				Properties map[string]struct {
+					Type    string `yaml:"type"`
+					Default any    `yaml:"default"`
+				} `yaml:"properties"`
+			} `yaml:"instance_schema"`
+			ActionCatalog []struct {
+				Name string `yaml:"name"`
+			} `yaml:"action_catalog"`
+			Execution struct {
+				IdempotentActions []string `yaml:"idempotent_actions"`
+			} `yaml:"execution"`
 		} `yaml:"spec"`
 	}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
@@ -665,6 +708,28 @@ func TestManifest_IntegrationTypeYAML_DeclaresBothKeyAliases(t *testing.T) {
 	if got := props["stripe_secret_key"]; !got.Secret || got.Type != "string" {
 		t.Errorf("stripe_secret_key declared with wrong shape: %+v (want type=string secret=true)", got)
 	}
+	if doc.Spec.Version != AdapterVersion || doc.Spec.Adapter.Version != AdapterVersion || doc.Spec.Adapter.ImageTag != "v"+AdapterVersion {
+		t.Errorf("manifest version drift: spec=%q adapter=%q image=%q runtime=%q", doc.Spec.Version, doc.Spec.Adapter.Version, doc.Spec.Adapter.ImageTag, AdapterVersion)
+	}
+	creationGate, ok := doc.Spec.InstanceSchema.Properties["allow_sensitive_webhook_endpoint_creation"]
+	if !ok || creationGate.Type != "boolean" || creationGate.Default != false {
+		t.Errorf("manifest sensitive creation gate = %#v, want boolean default false", creationGate)
+	}
+	provisioningGeneration, ok := doc.Spec.InstanceSchema.Properties["webhook_endpoint_provisioning_generation"]
+	if !ok || provisioningGeneration.Type != "string" || provisioningGeneration.Default != nil {
+		t.Errorf("manifest webhook provisioning generation = %#v, want string without a default", provisioningGeneration)
+	}
+	foundProvision := false
+	for _, action := range doc.Spec.ActionCatalog {
+		if action.Name == OperationProvisionWebhookEndpoint {
+			foundProvision = true
+			break
+		}
+	}
+	if !foundProvision {
+		t.Errorf("manifest action_catalog missing %q", OperationProvisionWebhookEndpoint)
+	}
+	require.NotContains(t, doc.Spec.Execution.IdempotentActions, OperationProvisionWebhookEndpoint)
 }
 
 // TestSpec_LegacyOperationsRouteThroughCompat verifies the per-adapter

@@ -7,17 +7,20 @@ spec:
   type_ref: { namespace: global, name: stripe }
   operation: ensure_webhook_endpoint
   description: |
-    Ensure a Stripe WebhookEndpoint exists for the URL + events. When id is
-    provided the call PATCHes; otherwise POST creates a new endpoint.
+    Adopt one existing Stripe WebhookEndpoint by exact id or URL and reconcile
+    its mutable state. This capability never creates an endpoint because Stripe
+    returns the signing secret only once. Use provision_webhook_endpoint from a
+    workflow with a transient secret sink when the endpoint is absent.
   inputs:
-    id: { type: string, description: "When set, follows the PATCH (update) path." }
+    id: { type: string, description: "Exact endpoint ID. When absent, exact URL adoption is used." }
     url: { type: string }
     enabled_events:
       type: array
       items: { type: string }
-      default: ["*"]
+    disabled: { type: boolean, description: "Desired disabled state. Set false to re-enable." }
     description: { type: string }
     metadata: { type: object }
+    connect: { type: boolean, description: "Required explicit endpoint scope. Ownership metadata must match scope and integration instance." }
     stripe_account: { type: string }
     idempotency_key: { type: string }
   outputs:
@@ -25,4 +28,14 @@ spec:
     url: { type: string }
     status: { type: string }
     enabled_events: { type: array }
-    secret: { type: string, description: "Returned on create only." }
+    api_version: { type: string }
+    application: { type: string }
+    livemode: { type: boolean }
+    created_at: { type: integer }
+    description: { type: string }
+    metadata: { type: object }
+    scope: { type: string }
+    stripe_account: { type: string }
+    adopted: { type: boolean }
+    created: { type: boolean }
+    updated: { type: boolean }

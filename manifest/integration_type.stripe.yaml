@@ -12,16 +12,16 @@ spec:
   dashboard:
     url: https://dashboard.stripe.com
     label: "Abrir Stripe"
-  version: 2.4.0
+  version: 3.0.0
   adapter:
     image_repo: ghcr.io/dakasa-yggdrasil/integration-stripe
-    image_tag: v2.4.0
+    image_tag: v3.0.0
     transport: http_json
     endpoints:
       describe: /rpc/describe
       execute: /rpc/execute
     timeout_seconds: 30
-    version: 2.4.0
+    version: 3.0.0
   capabilities:
   - describe
   - execute
@@ -112,6 +112,11 @@ spec:
     idempotent: true
     resource_types:
     - webhook_endpoint
+  - name: provision_webhook_endpoint
+    category: capability
+    idempotent: false
+    resource_types:
+    - webhook_endpoint
   - name: observe_webhook_endpoints
     category: capability
     idempotent: true
@@ -142,9 +147,14 @@ spec:
     idempotent: true
     resource_types:
     - webhook_endpoint
-  - name: stripe_webhook_received
+  - name: on_surface_query
     category: reactor
     idempotent: true
+    resource_types:
+    - webhook_endpoint
+  - name: stripe_webhook_received
+    category: reactor
+    idempotent: false
     resource_types:
     - webhook_endpoint
   resource_types:
@@ -219,10 +229,10 @@ spec:
   discovery:
     mode: push
     cursor: none
+    supports_webhooks: true
   normalization:
-    name_path: metadata.name
-    owner_path: metadata.namespace
-    external_id_path: metadata.name
+    name_path: data.object.id
+    external_id_path: data.object.id
     fallback_resource_prefix: thirdparty.stripe.custom
   execution:
     supports_dry_run: false
@@ -246,7 +256,7 @@ spec:
     - create_payout
     - manage_connect_account
     - verify_webhook_signature
-    - stripe_webhook_received
+    - on_surface_query
   instance_schema:
     mode: inline
     properties:
@@ -255,7 +265,7 @@ spec:
         description: Optional Stripe Connect account ID; sets Stripe-Account header.
       stripe_api_version:
         type: string
-        default: 2024-12-18.acacia
+        default: 2025-10-29.clover
       stripe_webhook_secret:
         type: string
         secret: true
@@ -263,6 +273,13 @@ spec:
       webhook_tolerance_seconds:
         type: integer
         default: 300
+      allow_sensitive_webhook_endpoint_creation:
+        type: boolean
+        default: false
+        description: Break-glass opt-in for provision_webhook_endpoint. Creation still requires a Core-authorized transient next-step secret sink.
+      webhook_endpoint_provisioning_generation:
+        type: string
+        description: Operator-controlled attempt generation for create-only webhook idempotency. Required when sensitive creation is enabled and changed after explicit destroy before recovery recreation.
       # Operator-injected non-secret metadata accepted by the validation
       # instance. Declared so yggdrasil-core does not reject the config
       # at validation time. The adapter ignores fields it does not

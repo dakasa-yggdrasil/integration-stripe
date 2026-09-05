@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,14 @@ import (
 // Pre-convention names are translated through ResolveOperation and logged
 // once per invocation as WARN during the compat window (SDK v0.5.x).
 func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	return ExecuteContext(context.Background(), req)
+}
+
+// ExecuteContext dispatches one adapter capability call with the caller's
+// cancellation and deadline. The transport handler must use this entry point
+// for provision_webhook_endpoint so a timed-out workflow cannot leave a
+// background provider POST running after the Core has abandoned the response.
+func ExecuteContext(ctx context.Context, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
 	rawOp := NormalizeExecuteOperation(req.Operation, req.Capability)
 	if rawOp == "" {
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("operation is required")
@@ -35,8 +44,6 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 		StripeExecuteDuration.WithLabelValues(op, instance).Observe(time.Since(start).Seconds())
 	}()
 	StripeExecuteRequests.WithLabelValues(op, instance).Inc()
-	ctx := context.Background()
-
 	// verify_webhook_signature does not need a Stripe HTTP client.
 	if op == OperationVerifyWebhookSig {
 		return verifyWebhookSig(req)
@@ -67,6 +74,22 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 	apiVersion := stringOr(req.Integration.Spec.Config, "stripe_api_version")
 	if apiVersion == "" {
 		apiVersion = StripeAPIVersion
+	}
+	configuredAccount := strings.TrimSpace(stringOr(req.Integration.Spec.Config, "stripe_account_id"))
+	requestedAccount := strings.TrimSpace(stringOr(req.Input, "stripe_account"))
+	if configuredAccount != "" {
+		if !strings.HasPrefix(configuredAccount, "acct_") {
+			return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("configured stripe_account_id must start with acct_")
+		}
+		if requestedAccount != "" && requestedAccount != configuredAccount {
+			return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("stripe_account conflicts with the integration instance account")
+		}
+		if requestedAccount == "" {
+			req.Input = cloneStringAnyMap(req.Input)
+			req.Input["stripe_account"] = configuredAccount
+		}
+	} else if requestedAccount != "" && !strings.HasPrefix(requestedAccount, "acct_") {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("stripe_account must start with acct_")
 	}
 
 	client, err := clientForInstance(req.Integration.InstanceID, apiKey, baseURL, apiVersion)
@@ -105,6 +128,8 @@ func Execute(req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExe
 	// webhook_endpoint triple.
 	case OperationEnsureWebhookEndpoint:
 		return ensureWebhookEndpoint(ctx, client, req)
+	case OperationProvisionWebhookEndpoint:
+		return provisionWebhookEndpoint(ctx, client, req)
 	case OperationObserveWebhookEndpoints:
 		return observeWebhookEndpoints(ctx, client, req)
 	case OperationDestroyWebhookEndpoint:
@@ -778,74 +803,378 @@ func observeBalance(ctx context.Context, c *stripe.Client, req contract.AdapterE
 	}}, nil
 }
 
-// ensureWebhookEndpoint: POST when no id, PATCH when id present.
+// ensureWebhookEndpoint adopts an existing endpoint by exact URL or ID, then
+// reconciles mutable state. It deliberately never creates: Stripe returns the
+// signing secret only on creation, and the normal reconcile path may persist
+// or emit adapter output. Creation therefore lives in the separately gated
+// provision_webhook_endpoint action.
 func ensureWebhookEndpoint(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
 	in := req.Input
 	if id := stringOr(in, "id"); id != "" {
-		return updateWebhookEndpoint(ctx, c, req, id)
+		params := &stripe.WebhookEndpointRetrieveParams{}
+		if acc := stringOr(in, "stripe_account"); acc != "" {
+			params.SetStripeAccount(acc)
+		}
+		current, err := c.V1WebhookEndpoints.Retrieve(ctx, id, params)
+		if err != nil {
+			return contract.AdapterExecuteIntegrationResponse{}, err
+		}
+		return reconcileWebhookEndpoint(ctx, c, req, current, false)
 	}
 	url := stringOr(in, "url")
 	if url == "" {
 		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("url required for webhook_endpoint")
 	}
-	events := stringSliceFromInput(in, "enabled_events")
-	if len(events) == 0 {
-		events = []string{"*"}
+	if events, ok := strictStringSliceInput(in, "enabled_events"); !ok || len(events) == 0 {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("enabled_events required for webhook_endpoint adoption")
 	}
+
+	matches, err := findWebhookEndpointsByURL(ctx, c, url, stringOr(in, "stripe_account"))
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	switch len(matches) {
+	case 0:
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("Stripe webhook endpoint %q is absent; call %s only from a workflow with a transient secret sink", url, OperationProvisionWebhookEndpoint)
+	case 1:
+		return reconcileWebhookEndpoint(ctx, c, req, matches[0], true)
+	default:
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("multiple Stripe webhook endpoints match exact URL %q; supply id to adopt one safely", url)
+	}
+}
+
+// provisionWebhookEndpoint is the only create path because the provider returns
+// the signing secret once. Two independent gates are required: an instance
+// operator opt-in and Core's transient-next-step sink handshake. The operation
+// is intentionally not registered with the SDK reconciler, preventing its
+// automatic mutation event from serializing the create-only secret.
+func provisionWebhookEndpoint(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
+	if !boolFromInput(req.Integration.Spec.Config, "allow_sensitive_webhook_endpoint_creation") {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("sensitive Stripe webhook endpoint creation is disabled for this integration instance")
+	}
+	if !hasTransientSecretSinkHandshake(req.Metadata) {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("provision_webhook_endpoint requires a Core-authorized transient secret sink in the immediately following workflow step")
+	}
+
+	in := req.Input
+	url := stringOr(in, "url")
+	if url == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("url required for webhook_endpoint")
+	}
+	events, ok := strictStringSliceInput(in, "enabled_events")
+	if !ok || len(events) == 0 {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("enabled_events required for webhook_endpoint creation")
+	}
+	if disabled, present := boolInputWithPresence(in, "disabled"); present && disabled {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("Stripe webhook endpoints cannot be provisioned disabled; create and then reconcile status")
+	}
+
+	connect, connectPresent := boolInputWithPresence(in, "connect")
+	if !connectPresent {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("connect must be an explicit boolean for webhook_endpoint creation")
+	}
+	stripeAccount := stringOr(in, "stripe_account")
+	if connect && stripeAccount != "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("connect=true cannot be combined with a Stripe-Account scope")
+	}
+	apiVersion := stringOr(in, "api_version")
+	if apiVersion != StripeAPIVersion {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("api_version must equal the adapter SDK version %s", StripeAPIVersion)
+	}
+	if strings.TrimSpace(req.Integration.InstanceID) == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("integration instance_id is required for webhook_endpoint creation")
+	}
+	generation, err := webhookProvisioningGeneration(req.Integration.Spec.Config)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	metadata, err := strictMetadataFromInput(in)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	scope := "account"
+	if connect {
+		scope = "connect"
+	}
+	for _, reserved := range []string{"yggdrasil_scope", "yggdrasil_instance_id", "yggdrasil_stripe_account", "yggdrasil_provisioning_generation"} {
+		if _, exists := metadata[reserved]; exists {
+			return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("metadata key %q is reserved", reserved)
+		}
+	}
+	metadata["yggdrasil_scope"] = scope
+	metadata["yggdrasil_instance_id"] = req.Integration.InstanceID
+	metadata["yggdrasil_provisioning_generation"] = generation
+	if stripeAccount != "" {
+		metadata["yggdrasil_stripe_account"] = stripeAccount
+	}
+	if _, present := in["idempotency_key"]; present {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("idempotency_key is adapter-owned for webhook_endpoint creation")
+	}
+	matches, err := findWebhookEndpointsByURL(ctx, c, url, stripeAccount)
+	if err != nil {
+		return contract.AdapterExecuteIntegrationResponse{}, err
+	}
+	if len(matches) > 0 {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("Stripe webhook endpoint %q already exists as %s; use ensure_webhook_endpoint to adopt it", url, matches[0].ID)
+	}
+
 	params := &stripe.WebhookEndpointCreateParams{
 		URL:           stripe.String(url),
 		EnabledEvents: stripe.StringSlice(events),
+		Connect:       stripe.Bool(connect),
+		APIVersion:    stripe.String(apiVersion),
+		Metadata:      metadata,
 	}
 	if desc := stringOr(in, "description"); desc != "" {
 		params.Description = stripe.String(desc)
 	}
-	if md := metadataFromInput(in); len(md) > 0 {
-		params.Metadata = md
+	if stripeAccount != "" {
+		params.SetStripeAccount(stripeAccount)
 	}
-	if acc := stringOr(in, "stripe_account"); acc != "" {
-		params.SetStripeAccount(acc)
-	}
-	params.SetIdempotencyKey(idempotencyKeyOrDerived(stringOr(in, "idempotency_key"), "ensure_we", url))
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(
+		"",
+		"provision_we",
+		webhookProvisionAttempt(url, connect, stripeAccount, generation),
+	))
 
 	we, err := c.V1WebhookEndpoints.Create(ctx, params)
 	if err != nil {
 		return contract.AdapterExecuteIntegrationResponse{}, err
 	}
-	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
-		"id":             we.ID,
-		"url":            we.URL,
-		"status":         string(we.Status),
-		"enabled_events": we.EnabledEvents,
-		"secret":         we.Secret,
-	}}, nil
+	if strings.TrimSpace(we.Secret) == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("Stripe created webhook endpoint %s without returning its create-only signing secret", we.ID)
+	}
+	out := webhookEndpointOutput(we)
+	out["secret"] = we.Secret
+	out["created"] = true
+	out["adopted"] = false
+	out["updated"] = false
+	out["scope"] = scope
+	out["stripe_account"] = stripeAccount
+	return contract.AdapterExecuteIntegrationResponse{
+		Output: out,
+		Metadata: map[string]any{
+			"secret_returned":             true,
+			"secret_persistence_required": true,
+			"sensitive_output_paths":      []string{"secret"},
+		},
+	}, nil
 }
 
-func updateWebhookEndpoint(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest, id string) (contract.AdapterExecuteIntegrationResponse, error) {
+func reconcileWebhookEndpoint(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest, current *stripe.WebhookEndpoint, adoptedByURL bool) (contract.AdapterExecuteIntegrationResponse, error) {
 	in := req.Input
+	connect, present := boolInputWithPresence(in, "connect")
+	if !present {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("connect must be an explicit boolean for webhook_endpoint adoption")
+	}
+	stripeAccount := stringOr(in, "stripe_account")
+	if connect && stripeAccount != "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("connect=true cannot be combined with a Stripe-Account scope")
+	}
+	expectedScope := "account"
+	if connect {
+		expectedScope = "connect"
+	}
+	instanceID := strings.TrimSpace(req.Integration.InstanceID)
+	if instanceID == "" {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("integration instance_id is required for webhook_endpoint adoption")
+	}
+	if current.Metadata == nil || current.Metadata["yggdrasil_scope"] != expectedScope {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("existing webhook endpoint scope cannot be proven as %s", expectedScope)
+	}
+	if current.Metadata["yggdrasil_instance_id"] != instanceID {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("existing webhook endpoint ownership cannot be proven for this integration instance")
+	}
+	if current.Metadata["yggdrasil_stripe_account"] != stripeAccount {
+		return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("existing webhook endpoint Stripe-Account scope cannot be proven")
+	}
 	params := &stripe.WebhookEndpointUpdateParams{}
-	if url := stringOr(in, "url"); url != "" {
+	changed := false
+	if url := stringOr(in, "url"); url != "" && url != current.URL {
 		params.URL = stripe.String(url)
+		changed = true
 	}
-	if events := stringSliceFromInput(in, "enabled_events"); len(events) > 0 {
+	if events := stringSliceFromInput(in, "enabled_events"); len(events) > 0 && !equalStringSet(events, current.EnabledEvents) {
 		params.EnabledEvents = stripe.StringSlice(events)
+		changed = true
 	}
-	if desc := stringOr(in, "description"); desc != "" {
+	if desc, present := stringInputWithPresence(in, "description"); present && desc != current.Description {
 		params.Description = stripe.String(desc)
+		changed = true
+	}
+	if disabled, present := boolInputWithPresence(in, "disabled"); present && disabled != (string(current.Status) == "disabled") {
+		params.Disabled = stripe.Bool(disabled)
+		changed = true
+	}
+	if _, present := in["metadata"]; present {
+		metadata, err := strictMetadataFromInput(in)
+		if err != nil {
+			return contract.AdapterExecuteIntegrationResponse{}, err
+		}
+		for _, reserved := range []string{"yggdrasil_scope", "yggdrasil_instance_id", "yggdrasil_stripe_account", "yggdrasil_provisioning_generation"} {
+			currentValue, currentHas := current.Metadata[reserved]
+			requestedValue, requestedHas := metadata[reserved]
+			if requestedHas && (!currentHas || requestedValue != currentValue) {
+				return contract.AdapterExecuteIntegrationResponse{}, fmt.Errorf("metadata key %q is provider-owned and cannot be changed", reserved)
+			}
+			if currentHas {
+				metadata[reserved] = currentValue
+			}
+		}
+		if !equalStringMap(metadata, current.Metadata) {
+			params.Metadata = make(map[string]string, len(metadata)+len(current.Metadata))
+			for key := range current.Metadata {
+				if _, keep := metadata[key]; !keep {
+					params.Metadata[key] = ""
+				}
+			}
+			for key, value := range metadata {
+				params.Metadata[key] = value
+			}
+			changed = true
+		}
 	}
 	if acc := stringOr(in, "stripe_account"); acc != "" {
 		params.SetStripeAccount(acc)
 	}
-	params.SetIdempotencyKey(idempotencyKeyOrDerived("", "update_we", id))
-	we, err := c.V1WebhookEndpoints.Update(ctx, id, params)
+	if !changed {
+		out := webhookEndpointOutput(current)
+		out["created"] = false
+		out["adopted"] = adoptedByURL
+		out["updated"] = false
+		return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
+	}
+	params.SetIdempotencyKey(idempotencyKeyOrDerived(stringOr(in, "idempotency_key"), "update_we", current.ID))
+	we, err := c.V1WebhookEndpoints.Update(ctx, current.ID, params)
 	if err != nil {
 		return contract.AdapterExecuteIntegrationResponse{}, err
 	}
-	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
-		"id":             we.ID,
-		"url":            we.URL,
-		"status":         string(we.Status),
-		"enabled_events": we.EnabledEvents,
-	}}, nil
+	out := webhookEndpointOutput(we)
+	out["created"] = false
+	out["adopted"] = adoptedByURL
+	out["updated"] = true
+	return contract.AdapterExecuteIntegrationResponse{Output: out}, nil
+}
+
+func findWebhookEndpointsByURL(ctx context.Context, c *stripe.Client, url, stripeAccount string) ([]*stripe.WebhookEndpoint, error) {
+	params := &stripe.WebhookEndpointListParams{}
+	params.Limit = stripe.Int64(100)
+	if stripeAccount != "" {
+		params.SetStripeAccount(stripeAccount)
+	}
+	matches := make([]*stripe.WebhookEndpoint, 0, 1)
+	var sequenceErr error
+	iter := c.V1WebhookEndpoints.List(ctx, params)
+	iter(func(endpoint *stripe.WebhookEndpoint, err error) bool {
+		if err != nil {
+			sequenceErr = err
+			return false
+		}
+		if endpoint != nil && endpoint.URL == url {
+			matches = append(matches, endpoint)
+		}
+		return true
+	})
+	if sequenceErr != nil {
+		return nil, sequenceErr
+	}
+	return matches, nil
+}
+
+func webhookEndpointOutput(endpoint *stripe.WebhookEndpoint) map[string]any {
+	out := map[string]any{
+		"id":             endpoint.ID,
+		"url":            endpoint.URL,
+		"status":         string(endpoint.Status),
+		"enabled_events": endpoint.EnabledEvents,
+		"api_version":    endpoint.APIVersion,
+		"application":    endpoint.Application,
+		"livemode":       endpoint.Livemode,
+		"created_at":     endpoint.Created,
+		"description":    endpoint.Description,
+		"metadata":       endpoint.Metadata,
+	}
+	if endpoint.Metadata != nil {
+		out["scope"] = endpoint.Metadata["yggdrasil_scope"]
+		out["stripe_account"] = endpoint.Metadata["yggdrasil_stripe_account"]
+	}
+	return out
+}
+
+func webhookProvisionAttempt(url string, connect bool, stripeAccount, generation string) string {
+	return strings.Join([]string{url, strconv.FormatBool(connect), stripeAccount, generation}, "|")
+}
+
+func webhookProvisioningGeneration(config map[string]any) (string, error) {
+	raw, present := config["webhook_endpoint_provisioning_generation"]
+	if !present {
+		return "", fmt.Errorf("webhook_endpoint_provisioning_generation is required for webhook_endpoint creation")
+	}
+	generation, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf("webhook_endpoint_provisioning_generation must be a string")
+	}
+	generation = strings.TrimSpace(generation)
+	if generation == "" || len(generation) > 64 {
+		return "", fmt.Errorf("webhook_endpoint_provisioning_generation must contain 1 to 64 characters")
+	}
+	for _, character := range generation {
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			character == '.' || character == '_' || character == '-' {
+			continue
+		}
+		return "", fmt.Errorf("webhook_endpoint_provisioning_generation contains an invalid character")
+	}
+	return generation, nil
+}
+
+func hasTransientSecretSinkHandshake(metadata map[string]any) bool {
+	if !boolFromInput(metadata, "supports_sensitive_output_paths") {
+		return false
+	}
+	sink, ok := metadata["sensitive_output_sink"].(map[string]any)
+	if !ok || stringOr(sink, "version") != "v1" || stringOr(sink, "mode") != "transient_next_step" {
+		return false
+	}
+	producerStepID := stringOr(sink, "producer_step_id")
+	if producerStepID == "" || producerStepID != stringOr(metadata, "step_id") || stringOr(sink, "step_id") == "" {
+		return false
+	}
+	if stringOr(sink, "family") != "secrets-management" || stringOr(sink, "operation") != "ensure_secret" {
+		return false
+	}
+	if stringOr(sink, "input_path") != "secret.generation.manual.value" {
+		return false
+	}
+	outputPaths, ok := exactStringSlice(sink["source_output_paths"])
+	if !ok || len(outputPaths) != 1 || outputPaths[0] != "secret" {
+		return false
+	}
+	return true
+}
+
+func exactStringSlice(raw any) ([]string, bool) {
+	switch values := raw.(type) {
+	case []string:
+		if values == nil {
+			return nil, false
+		}
+		return values, true
+	case []any:
+		out := make([]string, len(values))
+		for i, value := range values {
+			stringValue, ok := value.(string)
+			if !ok {
+				return nil, false
+			}
+			out[i] = stringValue
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func observeWebhookEndpoints(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {
@@ -859,13 +1188,7 @@ func observeWebhookEndpoints(ctx context.Context, c *stripe.Client, req contract
 		if err != nil {
 			return contract.AdapterExecuteIntegrationResponse{}, err
 		}
-		return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
-			"id":             we.ID,
-			"url":            we.URL,
-			"status":         string(we.Status),
-			"enabled_events": we.EnabledEvents,
-			"api_version":    we.APIVersion,
-		}}, nil
+		return contract.AdapterExecuteIntegrationResponse{Output: webhookEndpointOutput(we)}, nil
 	}
 	limit := intFromInput(in, "limit")
 	if limit <= 0 {
@@ -896,13 +1219,7 @@ func observeWebhookEndpoints(ctx context.Context, c *stripe.Client, req contract
 			stoppedEarly = true
 			return false
 		}
-		out = append(out, map[string]any{
-			"id":             we.ID,
-			"url":            we.URL,
-			"status":         string(we.Status),
-			"enabled_events": we.EnabledEvents,
-			"api_version":    we.APIVersion,
-		})
+		out = append(out, webhookEndpointOutput(we))
 		count++
 		return true
 	})
@@ -1064,6 +1381,151 @@ func boolFromInput(m map[string]any, key string) bool {
 		return v
 	}
 	return false
+}
+
+func boolInputWithPresence(m map[string]any, key string) (bool, bool) {
+	value, present := m[key]
+	if !present {
+		return false, false
+	}
+	parsed, ok := value.(bool)
+	return parsed, ok
+}
+
+func stringInputWithPresence(m map[string]any, key string) (string, bool) {
+	value, present := m[key]
+	if !present {
+		return "", false
+	}
+	parsed, ok := value.(string)
+	return parsed, ok
+}
+
+func cloneStringAnyMap(input map[string]any) map[string]any {
+	out := make(map[string]any, len(input)+1)
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
+}
+
+func strictStringSliceInput(input map[string]any, key string) ([]string, bool) {
+	var values []string
+	switch raw := input[key].(type) {
+	case []string:
+		values = append([]string(nil), raw...)
+	case []any:
+		values = make([]string, len(raw))
+		for index, item := range raw {
+			value, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			values[index] = value
+		}
+	default:
+		return nil, false
+	}
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == "" || value != strings.TrimSpace(value) {
+			return nil, false
+		}
+		if _, exists := seen[value]; exists {
+			return nil, false
+		}
+		seen[value] = struct{}{}
+	}
+	return values, true
+}
+
+func strictMetadataFromInput(input map[string]any) (map[string]string, error) {
+	raw, present := input["metadata"]
+	if !present {
+		return map[string]string{}, nil
+	}
+	out := map[string]string{}
+	switch values := raw.(type) {
+	case map[string]string:
+		for key, value := range values {
+			if key == "" || key != strings.TrimSpace(key) {
+				return nil, fmt.Errorf("metadata keys must be non-empty strings without surrounding whitespace")
+			}
+			out[key] = value
+		}
+	case map[string]any:
+		for key, rawValue := range values {
+			value, ok := rawValue.(string)
+			if !ok || key == "" || key != strings.TrimSpace(key) {
+				return nil, fmt.Errorf("metadata must contain only non-empty string keys and string values")
+			}
+			out[key] = value
+		}
+	default:
+		return nil, fmt.Errorf("metadata must be an object of string values")
+	}
+	return out, nil
+}
+
+func metadataInputWithPresence(in map[string]any) (map[string]string, bool) {
+	raw, present := in["metadata"]
+	if !present {
+		return nil, false
+	}
+	switch values := raw.(type) {
+	case map[string]any:
+		out := make(map[string]string, len(values))
+		for key, value := range values {
+			if text, ok := value.(string); ok {
+				out[key] = text
+			} else {
+				out[key] = fmt.Sprint(value)
+			}
+		}
+		return out, true
+	case map[string]string:
+		out := make(map[string]string, len(values))
+		for key, value := range values {
+			out[key] = value
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
+func equalStringMap(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, value := range left {
+		if right[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func equalStringSet(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	counts := make(map[string]int, len(left))
+	for _, value := range left {
+		counts[value]++
+	}
+	for _, value := range right {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+	for _, count := range counts {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // metadataFromInput coerces input["metadata"] into a string-keyed

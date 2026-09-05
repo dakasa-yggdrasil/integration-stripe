@@ -66,10 +66,11 @@ flowchart TD
 
 ## Capabilities
 
-The adapter declares **19 executable capabilities + 1 webhook reactor** across
-10 managed resource types. Resource operations follow the Yggdrasil universal
-naming convention (`ensure_/observe_/destroy_`); money-movement and helper
-actions are kept as allowlisted `create_*`/`manage_*`/`verify_*` ops.
+The adapter declares **21 executable operations + 1 inbound webhook reactor**
+across 10 managed resource types. The catalog classifies 20 operations as
+grantable capabilities and two as framework reactors (`on_surface_query` is
+executable only through the framework). Resource operations follow the
+Yggdrasil universal naming convention (`ensure_/observe_/destroy_`).
 
 | Capability | Resource type | Category |
 |---|---|---|
@@ -85,6 +86,7 @@ actions are kept as allowlisted `create_*`/`manage_*`/`verify_*` ops.
 | `observe_charges` | `charge` | capability |
 | `observe_balance` | `balance` | capability |
 | `ensure_webhook_endpoint` | `webhook_endpoint` | capability |
+| `provision_webhook_endpoint` | `webhook_endpoint` | capability (break glass) |
 | `observe_webhook_endpoints` | `webhook_endpoint` | capability |
 | `destroy_webhook_endpoint` | `webhook_endpoint` | capability |
 | `create_refund` | `refund` | capability (money movement) |
@@ -92,12 +94,13 @@ actions are kept as allowlisted `create_*`/`manage_*`/`verify_*` ops.
 | `create_payout` | `payout` | capability (money movement) |
 | `manage_connect_account` | `connect_account` | capability (Connect) |
 | `verify_webhook_signature` | `webhook_endpoint` | capability (helper) |
+| `on_surface_query` | `webhook_endpoint` | **reactor** (framework-invoked) |
 | `stripe_webhook_received` | `webhook_endpoint` | **reactor** (framework-invoked) |
 
 > Pre-v2 names (`create_payment_intent`, `confirm_payment_intent`,
 > `cancel_subscription`, `list_charges`, …) still resolve through a legacy-alias
 > shim that maps them to the canonical operation with a `WARN` log
-> (removal target: v3.0.0). Full input/output schemas in
+> (removal target: v4.0.0). Full input/output schemas in
 > [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 
 ## Quick start (local)
@@ -133,8 +136,8 @@ JSON.
 | `stripe_api_key` | credential | string | yes | `sk_live_*` / `rk_live_*`. Canonical. |
 | `stripe_secret_key` | credential | string | yes | Alias for `stripe_api_key` (read only if the canonical is absent). |
 | `stripe_webhook_secret` | credential / instance | string | yes | Webhook signing secret (`whsec_*`). |
-| `stripe_account_id` | instance | string | no | Optional Connect account; sets `Stripe-Account` header. |
-| `stripe_api_version` | instance | string | no | Default `2024-12-18.acacia`. |
+| `stripe_account_id` | instance | string | no | Optional bound Connect account; callers cannot override it. |
+| `stripe_api_version` | instance | string | no | Default `2025-10-29.clover`. |
 | `webhook_tolerance_seconds` | instance | integer | no | Default `300`. HMAC timestamp window. |
 
 Full field reference (incl. operator-metadata fields and runtime env vars) in
@@ -230,16 +233,14 @@ documented in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 | Component | Version |
 |---|---|
 | `yggdrasil-sdk-go` | `v0.8.3` (`go.mod`) |
-| Adapter version (`spec.go`) | `2.4.0` |
-| `integration_type` manifest version | `2.2.4` |
+| Adapter version (`spec.go`) | `3.0.0` |
+| `integration_type` manifest version | `3.0.0` |
 | Stripe Go SDK | `stripe-go/v83 v83.1.0` |
-| Pinned Stripe API version | `2024-12-18.acacia` |
+| Pinned Stripe API version | `2025-10-29.clover` |
 | Go | `1.25` |
 
-> The adapter version constant (`2.4.0`), the published-image manifest
-> (`2.2.4`), and the latest released `CHANGELOG.md` entry (`2.3.1`) are not yet
-> aligned — track this when registering the type into core. The describe
-> handshake reports `2.4.0`.
+> The adapter version constant, published-image manifest, and current changelog
+> entry are aligned at `3.0.0`. The describe handshake reports `3.0.0`.
 
 ## License
 

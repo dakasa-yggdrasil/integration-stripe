@@ -95,7 +95,7 @@ spec:
             Stripe-Version header sent on every call
             (instance_schema.stripe_api_version).
           type: string
-          default: 2024-12-18.acacia
+          default: 2025-10-29.clover
         - id: webhook_tolerance_seconds
           label: Webhook timestamp tolerance (seconds)
           description: |
@@ -249,6 +249,7 @@ spec:
                   stripe_account_id: "{{ inputs.stripe_account_id }}"
                   stripe_api_version: "{{ inputs.stripe_api_version }}"
                   webhook_tolerance_seconds: "{{ inputs.webhook_tolerance_seconds }}"
+                  allow_sensitive_webhook_endpoint_creation: false
       smoke_test:
         description: |
           Observe the Stripe account balance (GET /v1/balance). Read-only,
@@ -263,7 +264,8 @@ spec:
           input: {}
         timeout_seconds: 30
       post_install_hints:
-        - "Expose WEBHOOK_PORT (8082) behind an Ingress and register the public URL at Stripe Dashboard → Developers → Webhooks. The inbound path is /webhooks/stripe/{instance_name}; it must be reachable from Stripe for the stripe_webhook_received reactor to fire."
+        - "Expose WEBHOOK_PORT (8082) behind an Ingress, then observe and adopt the exact provider endpoint with ensure_webhook_endpoint. The inbound path is /webhooks/stripe/{instance_name}; it must be reachable from Stripe for the stripe_webhook_received reactor to fire."
+        - "If the endpoint is absent, use provision_webhook_endpoint only from a compatible Core workflow with an immediately following secrets-management/ensure_secret sink. Direct creation is blocked because Stripe returns the signing secret only once."
         - "The signing secret on the Stripe webhook endpoint must match stripe_webhook_secret — signature verification rejects deliveries otherwise (Stripe-Signature t=,v1= HMAC-SHA256, webhook_tolerance_seconds clock-skew window)."
         - "Drive resources with the ensure_/observe_/destroy_ triples: family=stripe, operation=ensure_payment_intent | ensure_customer | ensure_subscription | observe_charges | create_refund (money-movement, allowlisted)."
         - "Rotate the Stripe API key by re-running register-instance with a new stripe_api_key and updating the integration-stripe-credentials Secret."

@@ -1,0 +1,45 @@
+apiVersion: yggdrasil.io/v1alpha1
+kind: capability
+metadata:
+  name: provision-webhook-endpoint
+  namespace: global
+spec:
+  type_ref: { namespace: global, name: stripe }
+  operation: provision_webhook_endpoint
+  description: |
+    Create a Stripe WebhookEndpoint only under the create-only secret contract.
+    The integration instance must opt in and Core must bind the secret output
+    to an immediately following secrets-management ensure_secret step. The
+    instance must also provide an operator-controlled provisioning generation
+    that changes after explicit destroy before recovery recreation.
+  inputs:
+    url: { type: string }
+    enabled_events:
+      type: array
+      items: { type: string }
+    connect: { type: boolean, description: "Required explicit endpoint scope. true is Connect-wide; false is account-scoped." }
+    api_version: { type: string, description: "Required and must equal 2025-10-29.clover." }
+    description: { type: string }
+    metadata: { type: object }
+    stripe_account: { type: string }
+  outputs:
+    id: { type: string }
+    url: { type: string }
+    status: { type: string }
+    enabled_events: { type: array }
+    api_version: { type: string }
+    application: { type: string }
+    livemode: { type: boolean }
+    created_at: { type: integer }
+    description: { type: string }
+    metadata: { type: object }
+    scope: { type: string }
+    stripe_account: { type: string }
+    created: { type: boolean }
+    adopted: { type: boolean }
+    updated: { type: boolean }
+    secret:
+      type: string
+      secret: true
+      sensitive: true
+      description: Create-only signing secret. Core must keep it transient and pass it only to the declared next-step secret sink.

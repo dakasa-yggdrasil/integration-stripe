@@ -40,10 +40,12 @@ instance config.
 
 | Field | Type | Secret | Default | Consumed? | Notes |
 |---|---|---|---|---|---|
-| `stripe_account_id` | string | no | — | yes | Optional Stripe Connect account ID. Sets the `Stripe-Account` header on Connect calls. |
-| `stripe_api_version` | string | no | `2024-12-18.acacia` | yes | Sent via the `Stripe-Version` header. |
+| `stripe_account_id` | string | no | not set | yes | Optional Stripe Connect account ID. It is injected into calls and cannot be overridden by request input. |
+| `stripe_api_version` | string | no | `2025-10-29.clover` | yes | Must match the stripe-go/v83 request and webhook event version. |
 | `stripe_webhook_secret` | string | yes | — | yes (webhook server) | Per-instance webhook signing secret (`whsec_*`). |
 | `webhook_tolerance_seconds` | integer | no | `300` | yes (webhook server) | Max clock skew between the webhook `t=` timestamp and verification. |
+| `allow_sensitive_webhook_endpoint_creation` | boolean | no | `false` | yes | Break-glass opt-in for `provision_webhook_endpoint`; Core must also authorize a transient next-step secret sink. |
+| `webhook_endpoint_provisioning_generation` | string | no | not set | yes | Required for sensitive creation. Reuse within one attempt; after explicit destroy, change it before a recovery recreation so Stripe does not replay the deleted endpoint response. |
 | `base_url` | string (`uri`) | no | — | no | Operator-injected RPC base-URL override used by the validation harness. The adapter ignores it. |
 | `environment` | string | no | — | no | Free-form tag (`sandbox`/`production`) for operator filtering. Ignored by the adapter. |
 | `provider` | string | no | `stripe` | no | Provider-name echo, kept for instance ergonomics. Ignored by the adapter. |
@@ -113,7 +115,7 @@ When `STRIPE_INSTANCES_CONFIG` points at a file:
       "stripe_api_key": "sk_live_...",
       "stripe_webhook_secret": "whsec_...",
       "stripe_account_id": "",
-      "stripe_api_version": "2024-12-18.acacia",
+      "stripe_api_version": "2025-10-29.clover",
       "webhook_tolerance_seconds": 300
     }
   ]
@@ -121,5 +123,5 @@ When `STRIPE_INSTANCES_CONFIG` points at a file:
 ```
 
 Entries without an `instance_id` are skipped. Unset `stripe_api_version`
-defaults to `2024-12-18.acacia` and unset `webhook_tolerance_seconds` defaults
+defaults to `2025-10-29.clover` and unset `webhook_tolerance_seconds` defaults
 to `300` (`InstanceConfig.WithDefaults`).

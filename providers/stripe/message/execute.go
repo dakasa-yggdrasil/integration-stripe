@@ -11,9 +11,9 @@ import (
 	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/sdk/reconcile"
 	"go.uber.org/zap"
 
+	model "github.com/dakasa-yggdrasil/integration-stripe/family/contract"
 	ad "github.com/dakasa-yggdrasil/integration-stripe/providers/stripe/adapter"
 	"github.com/dakasa-yggdrasil/integration-stripe/providers/stripe/config"
-	model "github.com/dakasa-yggdrasil/integration-stripe/family/contract"
 )
 
 // ExecuteHandler returns an SDK-shaped handler for the execute
@@ -80,8 +80,12 @@ func ExecuteHandler(logger *zap.Logger, a *adapter.Adapter, instances map[string
 
 		// Operation has no Reconciler — fall back to the legacy switch
 		// (action helpers, verify_webhook_signature, etc.).
-		response, err := ad.Execute(req)
+		response, err := ad.ExecuteContext(ctx, req)
 		if err != nil {
+			operation, _ := ad.ResolveOperation(ad.NormalizeExecuteOperation(req.Operation, req.Capability))
+			if operation == ad.OperationProvisionWebhookEndpoint {
+				return sensitiveFailure("execute_failed", logger)
+			}
 			return failure("execute_failed", err, logger)
 		}
 		return success(response)

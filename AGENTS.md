@@ -20,7 +20,7 @@ API key + webhook secret); Stripe Connect via the optional
 
 ## Capability surface
 
-19 executable ops + 1 reactor — authoritative list is
+21 executable ops + 1 inbound webhook reactor; the authoritative list is
 `SupportedExecuteOperations` in `spec.go`:
 
 - Canonical `ensure_`/`observe_`/`destroy_` triples for `payment_intent`,
@@ -28,7 +28,8 @@ API key + webhook secret); Stripe Connect via the optional
   `charge` and `balance`.
 - Allowlisted action helpers: `create_refund`, `create_payout`
   (money-movement), `create_setup_intent`, `manage_connect_account`,
-  `verify_webhook_signature`.
+  `verify_webhook_signature`, plus the handshake-gated
+  `provision_webhook_endpoint` create-only secret path.
 - Reactor `stripe_webhook_received` — framework-invoked, NOT dispatchable
   via `execute`.
 - Pre-v2.0.0 names still accepted via `legacyOperationAliases` /
@@ -53,8 +54,8 @@ API key + webhook secret); Stripe Connect via the optional
 - Ports (`cmd/adapter/main.go`): RPC `ADAPTER_PORT` default **8081**,
   webhook `WEBHOOK_PORT` default **8082**, health `HEALTHCHECK_PORT`
   default **8080** (`/healthz`, `/readyz`, `/metrics`).
-- `AdapterVersion` in `spec.go` ≈ **2.4.0** (read the constant);
-  `StripeAPIVersion` = `2024-12-18.acacia`.
+- `AdapterVersion` in `spec.go` ≈ **3.0.0** (read the constant);
+  `StripeAPIVersion` = `2025-10-29.clover`.
 - SDK pin `yggdrasil-sdk-go` ≈ **v0.8.3** (`go.mod`); Stripe client
   `stripe-go/v83`; Go 1.25.
 
@@ -73,7 +74,7 @@ API key + webhook secret); Stripe Connect via the optional
 ## Manifest may be stale
 
 `manifest/` is maintained separately from `spec.go` and can drift (e.g.
-`integration_type.stripe.yaml` version `2.2.4` vs `spec.go` `2.4.0`). Do
+`integration_type.stripe.yaml` version should match `spec.go` `3.0.0`). Do
 NOT edit `manifest/` as part of a docs/context change — reconcile it as
 its own deliberate step. There is no `examples/` dir and no top-level
 `INTEGRATION_CONTRACT.md` / `SURFACE_CONTRACT.md` in this repo; adopter

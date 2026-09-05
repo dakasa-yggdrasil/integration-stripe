@@ -1,7 +1,8 @@
 # Capabilities
 
-`integration-stripe` declares **19 executable capabilities + 1 webhook
-reactor** across 10 managed resource types. Input/output schemas below are
+`integration-stripe` declares **21 executable operations + 1 inbound webhook
+reactor** across 10 managed resource types. The catalog contains 20 grantable
+capabilities and two framework reactors. Input/output schemas below are
 pulled from [`manifest/capability.*.yaml`](../manifest) and
 [`manifest/reactor.stripe_webhook_received.yaml`](../manifest/reactor.stripe_webhook_received.yaml);
 the action catalog and resource→action mapping come from
@@ -23,13 +24,14 @@ Resource operations follow the Yggdrasil universal capability convention:
 Money-movement (`create_refund`, `create_payout`) and helper/state-transition
 ops (`create_setup_intent`, `manage_connect_account`, `verify_webhook_signature`)
 are kept as allowlisted action-shaped capabilities. All execute ops are marked
-idempotent.
+idempotent except the create-only `provision_webhook_endpoint`, whose ambiguous
+response-loss recovery is explicit observe, destroy, then recreate.
 
 ### Legacy aliases
 
 Pre-v2 names resolve to canonical ops via a shim
 ([`spec.go::legacyOperationAliases`](../providers/stripe/adapter/spec.go) +
-`reconcile.WithLegacyNames`), logging a `WARN`. Removal target: **v3.0.0**.
+`reconcile.WithLegacyNames`), logging a `WARN`. Removal target: **v4.0.0**.
 
 | Legacy name | Canonical |
 |---|---|
@@ -43,7 +45,7 @@ Pre-v2 names resolve to canonical ops via a shim
 | `list_subscriptions` | `observe_subscriptions` |
 | `list_charges` | `observe_charges` |
 | `retrieve_balance` | `observe_balance` |
-| `create_/update_webhook_endpoint` | `ensure_webhook_endpoint` |
+| `create_/update_webhook_endpoint` | `ensure_webhook_endpoint` (legacy create now adopts or updates only) |
 | `delete_webhook_endpoint` | `destroy_webhook_endpoint` |
 | `list_webhook_endpoints` | `observe_webhook_endpoints` |
 
@@ -190,18 +192,46 @@ Canonical prefix `thirdparty.stripe.webhook_endpoint` · identity
 `verify_webhook_signature`.
 
 ### `ensure_webhook_endpoint`
-POST when absent, PATCH (URL / `enabled_events`) when present.
+Adopts exactly one existing endpoint by `id` or exact `url`, then reconciles
+URL, event set, enabled status, description, and metadata. It refuses an
+ambiguous URL and never creates, because normal reconcile output can be
+persisted or emitted while Stripe returns the signing secret only once. The
+caller must declare `connect` explicitly, and provider metadata must prove both
+the immutable scope and the exact owning integration instance.
 
 | Inputs | Outputs |
 |---|---|
-| `id` (set → PATCH), `url`, `enabled_events` (array, default `["*"]`), `description`, `metadata` (obj), `stripe_account`, `idempotency_key` | `id`, `url`, `status`, `enabled_events` (array), `secret` (returned on create only) |
+| `id`, `url`, `enabled_events` (array), `disabled` (bool), `description`, `metadata` (obj), required `connect` immutable-scope assertion, `stripe_account`, `idempotency_key` | `id`, `url`, `status`, `enabled_events`, `api_version`, `application`, `livemode`, `created_at`, `description`, `metadata`, `scope`, `stripe_account`, `adopted`, `created=false`, `updated` |
+
+### `provision_webhook_endpoint`
+Break-glass create path for an absent endpoint. It is rejected unless the
+integration instance sets `allow_sensitive_webhook_endpoint_creation=true`
+and Core supplies a reserved v1 `transient_next_step` sink bound to an
+immediately following `secrets-management/ensure_secret` step. The action
+preflights exact URL uniqueness and runs outside SDK reconcile auto-emission.
+Its idempotency key is derived only by the adapter from the canonical intent;
+caller-selected keys are rejected so concurrent copies of the same workflow
+cannot bypass Stripe's replay protection. The instance must declare a stable
+`webhook_endpoint_provisioning_generation` for the attempt. After an explicit
+destroy, the operator changes that generation before recovery recreation so a
+cached Stripe response cannot point at the deleted endpoint.
+
+| Inputs | Outputs |
+|---|---|
+| `url`, `enabled_events` (array), required explicit `connect` (bool), required `api_version=2025-10-29.clover`, `description`, string-only `metadata` (obj), `stripe_account` | endpoint observation fields plus provider-backed `scope`, `stripe_account`, `created=true`, and create-only `secret` marked by `sensitive_output_paths=["secret"]` |
+
+`connect=true` is a Connect-wide endpoint managed by the platform account and
+therefore rejects any `stripe_account`. For an account-scoped endpoint,
+`connect=false` may be combined with an instance-bound account. The action is
+one-shot, not generally retry-safe: an ambiguous completion must be observed,
+then explicitly destroyed and recreated if its one-time secret was not stored.
 
 ### `observe_webhook_endpoints`
 `{id}` → single; otherwise paginated list.
 
 | Inputs | Outputs |
 |---|---|
-| `id`, `limit` (int, default `10`), `stripe_account` | `items` (array), `has_more` (bool) |
+| `id`, `limit` (int, default `10`), `stripe_account` | single endpoint fields or `items` (array), `has_more` (bool); endpoint fields include `livemode`, `application`, `created_at`, `description`, and `metadata` |
 
 ### `destroy_webhook_endpoint`
 `DELETE /v1/webhook_endpoints/{id}`. `404` → already-absent success.
