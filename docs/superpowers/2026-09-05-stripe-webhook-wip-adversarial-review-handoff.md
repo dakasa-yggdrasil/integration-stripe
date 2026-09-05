@@ -1,8 +1,8 @@
 # Stripe production webhook WIP: adversarial review handoff
 
-Date: 2026-09-05  
-Review target: `integration-stripe` worktree `codex/reconcile-production-webhook-20260905`  
-Baseline commit: `e4006900a5390768481c13fbe3bfc124915a5d58` plus the uncommitted WIP listed below  
+Date: 2026-09-05
+Review target: `integration-stripe` worktree `codex/reconcile-production-webhook-20260905`
+Baseline commit: `e4006900a5390768481c13fbe3bfc124915a5d58` plus the uncommitted WIP listed below
 Review mode: read-only; this handoff is the only file created by the review
 
 ## 1. Safety and provenance
