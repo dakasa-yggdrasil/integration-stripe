@@ -19,8 +19,8 @@ import (
 
 // main bootstraps the stripe adapter with 3 listeners:
 //
-//   - RPC on ADAPTER_PORT (default 8081): /rpc/describe + /rpc/execute
-//     via yggdrasil-sdk-go adapter.New(...).ListenHTTP.
+//   - RPC over HTTP on ADAPTER_PORT (default 8081), or over AMQP when
+//     YGGDRASIL_TRANSPORT=amqp, via yggdrasil-sdk-go.
 //   - Webhook on WEBHOOK_PORT (default 8082): /webhooks/stripe/{instance_id}
 //     served by webhook_server.go separately from the SDK mux.
 //   - Health on HEALTHCHECK_PORT (default 8080): /healthz + /readyz.
@@ -56,9 +56,21 @@ func main() {
 	a.Register("describe", message.DescribeHandler(logger)).
 		Register("execute", message.ExecuteHandler(logger, a, instances))
 
-	rpcAddr := ":" + envOrDefault("ADAPTER_PORT", "8081")
-	a.ListenHTTP(rpcAddr)
-	logger.Info("rpc listener", zap.String("addr", rpcAddr))
+	switch transport := strings.ToLower(strings.TrimSpace(os.Getenv("YGGDRASIL_TRANSPORT"))); transport {
+	case "", "http", "http_json":
+		rpcAddr := ":" + envOrDefault("ADAPTER_PORT", "8081")
+		a.ListenHTTP(rpcAddr)
+		logger.Info("rpc listener", zap.String("transport", "http_json"), zap.String("addr", rpcAddr))
+	case "amqp", "rabbitmq":
+		brokerURL := strings.TrimSpace(os.Getenv("BROKER_URL"))
+		if brokerURL == "" {
+			logger.Fatal("YGGDRASIL_TRANSPORT=amqp but BROKER_URL is empty")
+		}
+		a.ListenAMQP(brokerURL)
+		logger.Info("rpc listener", zap.String("transport", "rabbitmq"))
+	default:
+		logger.Fatal("unsupported YGGDRASIL_TRANSPORT", zap.String("value", transport))
+	}
 
 	whSrv := ad.NewWebhookServer(logger, instances, ":"+envOrDefault("WEBHOOK_PORT", "8082"))
 	go func() {

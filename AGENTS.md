@@ -11,7 +11,8 @@
 `integration-stripe` is the standalone **Stripe leaf adapter** for the
 Yggdrasil control plane. `integration_type stripe`, namespace `global`,
 domain `payments`. It exposes an honest adapter contract through
-`describe` and runs capabilities through `execute` over `http_json` RPC;
+`describe` and runs capabilities through `execute` over selectable
+`http_json` or AMQP RPC;
 inbound Stripe webhooks are handled by a separate reactor server.
 
 Multi-tenant: one Stripe account = one `integration_instance` (its own
@@ -44,19 +45,19 @@ API key + webhook secret); Stripe Connect via the optional
 - `providers/stripe/adapter/hmac.go` is a **local** Stripe-Signature
   verifier with typed errors. The repo deliberately does NOT use the
   SDK's `sig/hmac` or `webhookhttp` packages (both exist in
-  yggdrasil-sdk-go v0.8.3) — keep the local error/dedup contract; tests
+  yggdrasil-sdk-go v0.9.1) — keep the local error/dedup contract; tests
   encode it.
 
 ## Transport, versions, ports
 
-- Transport `http_json`; endpoints `/rpc/describe`, `/rpc/execute`;
-  timeout 30s.
+- Transport defaults to `http_json` with `/rpc/describe` and `/rpc/execute`;
+  `YGGDRASIL_TRANSPORT=amqp` selects the fixed Stripe queues. Timeout 30s.
 - Ports (`cmd/adapter/main.go`): RPC `ADAPTER_PORT` default **8081**,
   webhook `WEBHOOK_PORT` default **8082**, health `HEALTHCHECK_PORT`
   default **8080** (`/healthz`, `/readyz`, `/metrics`).
-- `AdapterVersion` in `spec.go` ≈ **3.0.0** (read the constant);
+- `AdapterVersion` in `spec.go` = **3.0.1**;
   `StripeAPIVersion` = `2025-10-29.clover`.
-- SDK pin `yggdrasil-sdk-go` ≈ **v0.8.3** (`go.mod`); Stripe client
+- SDK pin `yggdrasil-sdk-go` = **v0.9.1** (`go.mod`); Stripe client
   `stripe-go/v83`; Go 1.25.
 
 ## Non-negotiable rules
@@ -74,7 +75,7 @@ API key + webhook secret); Stripe Connect via the optional
 ## Manifest may be stale
 
 `manifest/` is maintained separately from `spec.go` and can drift (e.g.
-`integration_type.stripe.yaml` version should match `spec.go` `3.0.0`). Do
+`integration_type.stripe.yaml` version should match `spec.go` `3.0.1`). Do
 NOT edit `manifest/` as part of a docs/context change — reconcile it as
 its own deliberate step. There is no `examples/` dir and no top-level
 `INTEGRATION_CONTRACT.md` / `SURFACE_CONTRACT.md` in this repo; adopter

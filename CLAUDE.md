@@ -11,8 +11,8 @@
 `integration-stripe` is the **Stripe leaf adapter** for the Yggdrasil
 control plane (`github.com/dakasa-yggdrasil/integration-stripe`, Go,
 Apache 2.0). It turns Stripe into a declarative Yggdrasil integration:
-yggdrasil-core speaks `http_json` RPC to it (`/rpc/describe`,
-`/rpc/execute`), the adapter translates capabilities into Stripe REST
+yggdrasil-core speaks selectable `http_json` or AMQP RPC to it, the adapter
+translates capabilities into Stripe REST
 calls (via `stripe-go/v83`), and it pushes inbound Stripe webhook
 deliveries back into core as RTA event envelopes.
 
@@ -77,7 +77,7 @@ The reactor is served **separately from the SDK RPC mux**:
   that the tests assert on concretely to defeat any silent-pass refactor.
 
 **Note — the SDK ships equivalents this repo deliberately does NOT use.**
-`yggdrasil-sdk-go` v0.8.3 has both `sig/hmac/stripe.go` and
+`yggdrasil-sdk-go` v0.9.1 has both `sig/hmac/stripe.go` and
 `webhookhttp/server.go`. This adapter keeps its own `hmac.go` +
 `webhook_server.go` instead, so the reactor surface stays under local
 control (typed errors, dedup map, 200-before-emit ordering). If you're
@@ -116,20 +116,20 @@ monorepo. Adopter-facing docs are under `docs/`.
 
 ## Transport & versions
 
-- **Transport:** `http_json` (declared in `Describe().Adapter.Transport`
-  and the manifest). Endpoints `/rpc/describe` + `/rpc/execute`,
-  `timeout_seconds: 30`.
+- **Transport:** defaults to `http_json` with endpoints `/rpc/describe` +
+  `/rpc/execute`; `YGGDRASIL_TRANSPORT=amqp` selects the fixed Stripe queues
+  and requires `BROKER_URL`. `Describe()` mirrors the selected listener.
 - **Ports** (`cmd/adapter/main.go`):
   - RPC: `ADAPTER_PORT`, default **8081** (SDK `adapter.New(...).ListenHTTP`).
   - Webhook: `WEBHOOK_PORT`, default **8082** (local `WebhookServer`).
   - Health/metrics: `HEALTHCHECK_PORT`, default **8080**
     (`/healthz`, `/readyz`, `/metrics`).
-- **AdapterVersion:** `spec.go` `const AdapterVersion` ≈ **3.0.0**
-  (read the constant; this number moves). `StripeAPIVersion` pins the
+- **AdapterVersion:** `spec.go` `const AdapterVersion` = **3.0.1**.
+  `StripeAPIVersion` pins the
   Stripe API version (`2025-10-29.clover`); bumping it requires a full
   integration-test cycle + version bump.
-- **SDK pin:** `go.mod` `dakasa-yggdrasil/yggdrasil-sdk-go` ≈ **v0.8.3**
-  (read `go.mod`). Stripe client: `stripe/stripe-go/v83`. Go 1.25.
+- **SDK pin:** `go.mod` `dakasa-yggdrasil/yggdrasil-sdk-go` = **v0.9.1**.
+  Stripe client: `stripe/stripe-go/v83`. Go 1.25.
 
 ## Manifest is generated/maintained separately — may be stale
 
@@ -138,7 +138,7 @@ manifests that get published. It is **not** auto-derived from `spec.go`
 at build time, so it can drift. As of this writing
 `manifest/integration_type.stripe.yaml` declares
 `spec.version` / `adapter.version` must match `spec.go` `AdapterVersion`, now
-**3.0.0**.
+**3.0.1**.
 
 **Do NOT edit `manifest/` as part of a CLAUDE.md / docs change.** If you
 need the manifest reconciled to `spec.go`, do it as its own deliberate

@@ -14,11 +14,12 @@ Health, readiness, metrics, the webhook reactor flow, and common failures for
 
 ## Listeners
 
-The binary runs three independent HTTP servers:
+The binary always runs webhook and health HTTP servers, plus the selected RPC
+transport:
 
 | Server | Port (env / default) | Routes |
 |---|---|---|
-| RPC (SDK) | `ADAPTER_PORT` / `8081` | `/rpc/describe`, `/rpc/execute` |
+| RPC (SDK) | `ADAPTER_PORT` / `8081`, or RabbitMQ | `/rpc/describe`, `/rpc/execute`, or fixed AMQP queues |
 | Webhook | `WEBHOOK_PORT` / `8082` | `/webhooks/stripe/{instance_id}` |
 | Health | `HEALTHCHECK_PORT` / `8080` | `/healthz`, `/readyz`, `/metrics` |
 
@@ -29,9 +30,10 @@ The binary runs three independent HTTP servers:
 | `GET /healthz` | Liveness. Always `200 ok`. |
 | `GET /readyz` | Readiness. `200 ready`. |
 
-> The adapter has no broker connection to gate on (transport is HTTP RPC, not
-> AMQP), so `/readyz` is a static `200` rather than reflecting a connection
-> state. Kubelet liveness/readiness probes should target the health port.
+> `/readyz` is a static `200` and does not reflect an AMQP connection. In AMQP
+> mode the process fails startup if the broker is unavailable or the fixed
+> queues are missing/inaccessible, so Kubernetes restart state
+> is the transport-failure signal. Probes should still target the health port.
 
 ## Metrics
 
@@ -125,6 +127,7 @@ failed events for 72h, so short rollback windows lose no data.
 
 | Symptom | Likely cause | Action |
 |---|---|---|
+| Pod exits with `require predeclared fixed queue` | canonical RabbitMQ definitions were not imported first, or a fixed queue is inaccessible | Import/repair the platform-owned definitions before restarting the adapter; do not let the worker create queues. Verify durable quorum type separately through RabbitMQ management because passive AMQP checks existence only. |
 | `404 unknown instance` on webhook | `instance_id` path segment not in the loaded instance set | Confirm the instance is registered and `STRIPE_INSTANCES_CONFIG` / env fallback hydrated it. |
 | `400 invalid signature`, `signature_failures_total` climbing | wrong `stripe_webhook_secret`, clock skew, or a proxy mutating the body | Verify the secret matches the Stripe endpoint; check tolerance window and that no middleware rewrites the raw body. |
 | `ensure_webhook_endpoint` reports the URL absent | ensure is adopt/update-only so no create-only secret can leak through normal reconcile output | Run the guarded provision workflow with an immediately following transient `secrets-management/ensure_secret` sink. Never create from a direct call. |

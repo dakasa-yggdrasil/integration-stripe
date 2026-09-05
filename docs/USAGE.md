@@ -6,7 +6,7 @@ real capability, and verify the run.
 
 > New to Yggdrasil? Start at
 > [yggdrasil-core](https://github.com/dakasa-yggdrasil/yggdrasil-core). This
-> adapter is the Stripe plug — `yggdrasil-core` drives it over `http_json` RPC
+> adapter is the Stripe plug — `yggdrasil-core` drives it over HTTP or AMQP RPC
 > and receives Stripe webhook events back as workflow triggers.
 
 See also: [Configuration](CONFIGURATION.md) · [Capabilities](CAPABILITIES.md) ·
@@ -40,7 +40,7 @@ The adapter exposes three listeners (see [Operations](OPERATIONS.md) for ports):
 ### Production image
 
 ```
-ghcr.io/dakasa-yggdrasil/integration-stripe:v3.0.0
+ghcr.io/dakasa-yggdrasil/integration-stripe:v3.0.1
 ```
 
 Published by `.github/workflows/release.yml` on tag push (`v*`) and on pushes to
@@ -63,7 +63,8 @@ curl -s localhost:8081/rpc/describe | jq '{
 }'
 ```
 
-Expected: `provider: "stripe"`, `version: "3.0.0"`, `transport: "http_json"`,
+Expected in the default HTTP mode: `provider: "stripe"`, version `3.0.1`,
+`transport: "http_json"`,
 `capabilities: ["describe","execute"]`, 10 resource types, and 22
 action-catalog entries (20 capabilities + 2 framework reactors).
 
