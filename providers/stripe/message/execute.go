@@ -9,6 +9,7 @@ import (
 	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/adapter"
 	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/rpc"
 	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/sdk/reconcile"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	model "github.com/dakasa-yggdrasil/integration-stripe/family/contract"
@@ -38,6 +39,7 @@ func ExecuteHandler(logger *zap.Logger, a *adapter.Adapter, instances map[string
 		if err := json.Unmarshal(d.Body, &req); err != nil {
 			return failure("bad_request", err, logger)
 		}
+		hydrateResolvedInstanceID(&req)
 
 		capability := req.Capability
 		if capability == "" {
@@ -95,7 +97,8 @@ func ExecuteHandler(logger *zap.Logger, a *adapter.Adapter, instances map[string
 // buildSDKDelivery rewrites the inbound wire body into the shape the
 // SDK reconcile dispatch expects: {operation, capability, instance_id,
 // idempotency, input}. The instance_id is lifted from
-// integration.instance_id AND injected into input.instance_id so the
+// integration.instance_id (or hydrated from integration.instance.id) and
+// injected into input.instance_id so the
 // in-tree reconciler dispatch helpers can extract it per-call (the
 // SDK doesn't forward env.InstanceID into Reconciler.Ensure — only
 // onto the auto-emitted MutationEvent).
@@ -153,6 +156,23 @@ func buildSDKDelivery(d rpc.Delivery, req model.AdapterExecuteIntegrationRequest
 		return rpc.Delivery{}, err
 	}
 	return rpc.Delivery{Body: sdkBody, ContentType: d.ContentType}, nil
+}
+
+// hydrateResolvedInstanceID bridges current Core envelopes, which carry the
+// resolved integration instance as a ManifestReference without duplicating its
+// UUID into integration.instance_id. An explicitly supplied instance_id stays
+// authoritative for compatibility with direct and older callers.
+func hydrateResolvedInstanceID(req *model.AdapterExecuteIntegrationRequest) {
+	if req == nil {
+		return
+	}
+	if instanceID := strings.TrimSpace(req.Integration.InstanceID); instanceID != "" {
+		req.Integration.InstanceID = instanceID
+		return
+	}
+	if req.Integration.Instance.ID != uuid.Nil {
+		req.Integration.InstanceID = req.Integration.Instance.ID.String()
+	}
 }
 
 // isUnsupportedReconcileOp matches the SDK's "unsupported operation"
