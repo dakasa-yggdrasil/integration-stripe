@@ -27,8 +27,8 @@ integrations over your whole stack](https://github.com/dakasa-yggdrasil/yggdrasi
 versioned manifest catalog + RBAC/policy + OAuth/OIDC + a pluggable integration
 ecosystem). You write YAML; Yggdrasil persists, runs, and audits it.
 
-This adapter is the Stripe plug. `yggdrasil-core` speaks to it over
-`http_json` RPC (`/rpc/describe`, `/rpc/execute`); the adapter translates
+This adapter is the Stripe plug. `yggdrasil-core` speaks to it over selectable
+`http_json` or AMQP RPC; the adapter translates
 Yggdrasil capabilities into Stripe API calls (via `stripe-go/v83`) and pushes
 Stripe webhook deliveries back into core as workflow-triggering events. It is
 **multi-tenant** by design: one Stripe account = one `integration_instance`,
@@ -41,7 +41,7 @@ flowchart LR
   subgraph YG["Yggdrasil control plane"]
     core["yggdrasil-core<br/>(workflows · catalog · events)"]
   end
-  core -- "http_json RPC<br/>/rpc/describe · /rpc/execute" --> ad["integration-stripe<br/>(this adapter)"]
+  core -- "HTTP or AMQP RPC<br/>describe · execute" --> ad["integration-stripe<br/>(this adapter)"]
   ad -- "stripe-go/v83<br/>REST" --> stripe["Stripe API"]
   stripe -- "POST /webhooks/stripe/{instance_id}<br/>HMAC t=,v1=" --> ad
   ad -- "RTA event envelope" --> core
@@ -54,7 +54,7 @@ See [docs/OPERATIONS.md](docs/OPERATIONS.md) for the full webhook sequence.
 ```mermaid
 flowchart TD
   prov["provider: stripe<br/>domain: payments"]
-  type["integration_type: stripe<br/>(global) · adapter http_json"]
+  type["integration_type: stripe<br/>(global) · adapter HTTP/AMQP"]
   inst1["instance: integration-stripe-dakasa<br/>(ns dakasa)"]
   inst2["instance: integration-stripe-client-acme<br/>(ns acme-corp · Connect acct_1AcmeXYZ)"]
   type --> prov
@@ -232,15 +232,15 @@ documented in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 | Component | Version |
 |---|---|
-| `yggdrasil-sdk-go` | `v0.8.3` (`go.mod`) |
-| Adapter version (`spec.go`) | `3.0.0` |
-| `integration_type` manifest version | `3.0.0` |
+| `yggdrasil-sdk-go` | `v0.9.1` (`go.mod`) |
+| Adapter version (`spec.go`) | `3.0.1` |
+| `integration_type` manifest version | `3.0.1` |
 | Stripe Go SDK | `stripe-go/v83 v83.1.0` |
 | Pinned Stripe API version | `2025-10-29.clover` |
 | Go | `1.25` |
 
 > The adapter version constant, published-image manifest, and current changelog
-> entry are aligned at `3.0.0`. The describe handshake reports `3.0.0`.
+> entry are aligned at `3.0.1`. The describe handshake reports `3.0.1`.
 
 ## License
 

@@ -5,6 +5,26 @@ All notable changes to integration-stripe will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-09-05
+
+### Fixed
+
+- The worker now honors `YGGDRASIL_TRANSPORT=amqp` / `rabbitmq`, requires
+  `BROKER_URL`, and advertises the matching fixed Stripe `describe` and
+  `execute` queues. Production no longer requests AMQP while the process
+  silently listens only on HTTP.
+- Bumped `yggdrasil-sdk-go` from v0.8.3 to v0.9.1. AMQP startup now passively
+  requires those fixed queues to exist rather than creating queues with broker
+  defaults. Permanent access or availability failures during reconnect now
+  make the adapter runtime exit instead of remaining ready with zero consumers.
+
+### Operations
+
+- Import the canonical RabbitMQ definitions before rolling this version. The
+  passive SDK gate fails on missing/inaccessible queues but cannot distinguish
+  classic from quorum; the rollout must verify durable quorum attributes
+  through RabbitMQ management before starting Stripe.
+
 ## [3.0.0] - 2026-09-05
 
 ### Security

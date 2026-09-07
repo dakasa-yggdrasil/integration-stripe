@@ -12,6 +12,7 @@
 package adapter
 
 import (
+	"os"
 	"strings"
 
 	"github.com/dakasa-yggdrasil/integration-stripe/family/contract"
@@ -21,7 +22,7 @@ import (
 const (
 	Provider        = "stripe"
 	IntegrationType = "stripe"
-	AdapterVersion  = "3.0.0"
+	AdapterVersion  = "3.0.1"
 	// StripeAPIVersion pins the Stripe API version. Bumping requires a
 	// full integration test cycle + adapter version bump. Documented in
 	// README.md and integration_type manifest spec.adapter.version notes.
@@ -110,19 +111,32 @@ var SupportedExecuteOperations = []string{
 	OperationOnSurfaceQuery,
 }
 
-// Describe returns the adapter contract for yggdrasil-core handshake.
+// Describe returns the adapter contract for yggdrasil-core handshake. The
+// advertised transport must match the listener selected by main.
 func Describe() contract.AdapterDescribeResponse {
+	transport := strings.ToLower(strings.TrimSpace(os.Getenv("YGGDRASIL_TRANSPORT")))
+	adapterSpec := contract.IntegrationAdapterSpec{
+		Version:        AdapterVersion,
+		TimeoutSeconds: 30,
+	}
+	switch transport {
+	case "amqp", "rabbitmq":
+		adapterSpec.Transport = "rabbitmq"
+		adapterSpec.Queues = contract.IntegrationAdapterQueue{
+			Describe: QueueDescribe,
+			Execute:  QueueExecute,
+		}
+	default:
+		adapterSpec.Transport = "http_json"
+		adapterSpec.Endpoints = contract.IntegrationAdapterRoute{
+			Describe: "/rpc/describe",
+			Execute:  "/rpc/execute",
+		}
+	}
+
 	return contract.AdapterDescribeResponse{
-		Provider: Provider,
-		Adapter: contract.IntegrationAdapterSpec{
-			Version:        AdapterVersion,
-			TimeoutSeconds: 30,
-			Transport:      "http_json",
-			Endpoints: contract.IntegrationAdapterRoute{
-				Describe: "/rpc/describe",
-				Execute:  "/rpc/execute",
-			},
-		},
+		Provider:     Provider,
+		Adapter:      adapterSpec,
 		Capabilities: []string{"describe", "execute"},
 		CredentialSchema: contract.IntegrationSchemaSpec{
 			Mode: "inline",

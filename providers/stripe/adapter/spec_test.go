@@ -18,8 +18,30 @@ import (
 func TestSpec_ProviderAndVersion(t *testing.T) {
 	require.Equal(t, "stripe", Provider)
 	require.Equal(t, "stripe", IntegrationType)
-	require.Equal(t, "3.0.0", AdapterVersion)
+	require.Equal(t, "3.0.1", AdapterVersion)
 	require.Equal(t, "2025-10-29.clover", StripeAPIVersion)
+}
+
+func TestSpec_DescribeTransportMatchesRuntimeSelection(t *testing.T) {
+	t.Run("HTTP default", func(t *testing.T) {
+		t.Setenv("YGGDRASIL_TRANSPORT", "")
+		d := Describe()
+		require.Equal(t, "http_json", d.Adapter.Transport)
+		require.Equal(t, "/rpc/describe", d.Adapter.Endpoints.Describe)
+		require.Equal(t, "/rpc/execute", d.Adapter.Endpoints.Execute)
+		require.Empty(t, d.Adapter.Queues.Describe)
+		require.Empty(t, d.Adapter.Queues.Execute)
+	})
+
+	t.Run("AMQP fixed queues", func(t *testing.T) {
+		t.Setenv("YGGDRASIL_TRANSPORT", "amqp")
+		d := Describe()
+		require.Equal(t, "rabbitmq", d.Adapter.Transport)
+		require.Equal(t, QueueDescribe, d.Adapter.Queues.Describe)
+		require.Equal(t, QueueExecute, d.Adapter.Queues.Execute)
+		require.Empty(t, d.Adapter.Endpoints.Describe)
+		require.Empty(t, d.Adapter.Endpoints.Execute)
+	})
 }
 
 // TestSpec_UIMetadata_Section15 verifies §15 INTEGRATION_CONTRACT.md

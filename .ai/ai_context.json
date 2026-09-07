@@ -1,0 +1,198 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-09-06T17:25:17-03:00",
+  "primary_language": "go",
+  "languages": {
+    ".go": 32,
+    ".json": 9,
+    ".yaml": 24,
+    ".yml": 6
+  },
+  "provenance": {
+    "commit": "eddc04d8759a950017b40feb545636f286cc57a9",
+    "dirty": false,
+    "files": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "8f186b198e4e67281e5e366b79b8dc9677c981961f0705c2e303c5b57ab57369"
+      },
+      {
+        "path": "CLAUDE.md",
+        "sha256": "9b737048fa357cfdd73089b1aabc743c27be7d7ac8827a394db4c824a851714f"
+      },
+      {
+        "path": "README.md",
+        "sha256": "30ebfe388ea37622ddcd143d271f0ccb258c79ddc34ce178f49775206b681326"
+      },
+      {
+        "path": "Taskfile.yml",
+        "sha256": "e1bfdfee12097360d5a73fadab9df875ad868d795b0a679b63f2b270ec772a88"
+      },
+      {
+        "path": "Dockerfile",
+        "sha256": "7e87e9fd889e6c714ee6424941f05ac54cf1ed1896022896366d1dea9bdf577f"
+      },
+      {
+        "path": "docker-compose.yml",
+        "sha256": "35b027e09eb5825afd9a134bfa12aa1650bb6b236992254f4e216857a626bb1f"
+      },
+      {
+        "path": "go.mod",
+        "sha256": "b8bf4c1e8386906d6c23d687af219010ec91ddd37bbc9aba5915048e48812cbd"
+      }
+    ]
+  },
+  "service": {},
+  "top_dirs": [
+    {
+      "path": "manifest",
+      "files": 23,
+      "kb": 26
+    },
+    {
+      "path": "providers/stripe/adapter",
+      "files": 21,
+      "kb": 231
+    },
+    {
+      "path": "testdata/stripe-events",
+      "files": 6,
+      "kb": 1
+    },
+    {
+      "path": ".github/workflows",
+      "files": 4,
+      "kb": 10
+    },
+    {
+      "path": "providers/stripe/message",
+      "files": 4,
+      "kb": 17
+    },
+    {
+      "path": ".",
+      "files": 3,
+      "kb": 13
+    },
+    {
+      "path": "surface-ui",
+      "files": 3,
+      "kb": 2
+    },
+    {
+      "path": "pkg/contractcheck",
+      "files": 2,
+      "kb": 9
+    },
+    {
+      "path": "providers/stripe/config",
+      "files": 2,
+      "kb": 5
+    },
+    {
+      "path": "cmd/adapter",
+      "files": 1,
+      "kb": 4
+    },
+    {
+      "path": "family/contract",
+      "files": 1,
+      "kb": 9
+    },
+    {
+      "path": "integration_tests",
+      "files": 1,
+      "kb": 5
+    }
+  ],
+  "top_files_by_size": [
+    {
+      "path": "providers/stripe/adapter/adapter.go",
+      "kb": 53
+    },
+    {
+      "path": "providers/stripe/adapter/spec_test.go",
+      "kb": 30
+    },
+    {
+      "path": "providers/stripe/adapter/spec.go",
+      "kb": 27
+    },
+    {
+      "path": "providers/stripe/adapter/webhook_endpoint_test.go",
+      "kb": 23
+    },
+    {
+      "path": "providers/stripe/adapter/surface_query_test.go",
+      "kb": 16
+    },
+    {
+      "path": "providers/stripe/adapter/reconcile.go",
+      "kb": 14
+    },
+    {
+      "path": "providers/stripe/adapter/surface_query.go",
+      "kb": 13
+    },
+    {
+      "path": "yggdrasil-quickstart.yaml",
+      "kb": 12
+    },
+    {
+      "path": "family/contract/types.go",
+      "kb": 9
+    },
+    {
+      "path": "manifest/integration_type.stripe.yaml",
+      "kb": 8
+    },
+    {
+      "path": "providers/stripe/message/execute.go",
+      "kb": 7
+    },
+    {
+      "path": "providers/stripe/adapter/reconcile_dispatch_test.go",
+      "kb": 7
+    }
+  ],
+  "contracts": {
+    "openapi": false,
+    "openapi_endpoints_estimated": 0,
+    "event_schemas": 0
+  },
+  "database": {
+    "migrations": 0
+  },
+  "docs": {
+    "glossary": false,
+    "readme": true
+  },
+  "dependencies": {
+    "go_modules": [
+      "github.com/beorn7/perks v1.0.1 // indirect",
+      "github.com/cespare/xxhash/v2 v2.3.0 // indirect",
+      "github.com/dakasa-yggdrasil/yggdrasil-sdk-go v0.9.1",
+      "github.com/davecgh/go-spew v1.1.1 // indirect",
+      "github.com/google/uuid v1.6.0",
+      "github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect",
+      "github.com/pmezard/go-difflib v1.0.0 // indirect",
+      "github.com/prometheus/client_golang v1.23.2",
+      "github.com/prometheus/client_model v0.6.2 // indirect",
+      "github.com/prometheus/common v0.66.1 // indirect",
+      "github.com/prometheus/procfs v0.16.1 // indirect",
+      "github.com/rabbitmq/amqp091-go v1.10.0 // indirect",
+      "github.com/stretchr/testify v1.11.1",
+      "github.com/stripe/stripe-go/v83 v83.1.0",
+      "go.uber.org/multierr v1.10.0 // indirect",
+      "go.uber.org/zap v1.27.1",
+      "go.yaml.in/yaml/v2 v2.4.2 // indirect",
+      "golang.org/x/sys v0.35.0 // indirect",
+      "google.golang.org/protobuf v1.36.8 // indirect",
+      "gopkg.in/yaml.v3 v3.0.1"
+    ]
+  },
+  "ops": {
+    "config_files": 4,
+    "k8s_manifests": 4
+  }
+}

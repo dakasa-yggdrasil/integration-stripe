@@ -86,6 +86,8 @@ emitter ([`reconcile.go`](../providers/stripe/adapter/reconcile.go)).
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `YGGDRASIL_TRANSPORT` | `http_json` | RPC transport: `http` / `http_json`, or `amqp` / `rabbitmq`. |
+| `BROKER_URL` | unset | RabbitMQ URL. Required when `YGGDRASIL_TRANSPORT=amqp`; unused in HTTP mode. |
 | `ADAPTER_PORT` | `8081` | RPC listener (`/rpc/describe`, `/rpc/execute`). |
 | `WEBHOOK_PORT` | `8082` | Inbound Stripe webhook receiver. |
 | `HEALTHCHECK_PORT` | `8080` | `/healthz`, `/readyz`, `/metrics`. |
@@ -97,6 +99,14 @@ emitter ([`reconcile.go`](../providers/stripe/adapter/reconcile.go)).
 | `STRIPE_API_BASE` | Stripe prod | Backend URL override (used by tests and `stripe-mock`). Consumed by the Stripe client builder. |
 | `YGGDRASIL_CORE_URL` | unset | When set, the §6.5 mutation-event emitter posts to core's `/api/v1/events`; otherwise a no-op emitter is used. |
 | `YGGDRASIL_RUN_TOKEN` | unset | Auth token paired with `YGGDRASIL_CORE_URL` for event emission. |
+
+In AMQP mode, the platform must provision
+`yggdrasil.adapter.stripe.describe` and
+`yggdrasil.adapter.stripe.execute` as durable quorum queues before the worker
+starts. SDK v0.9.1 checks fixed-queue existence passively and never creates
+topology. Passive AMQP does not compare queue attributes, so rollout must verify
+quorum and durability through RabbitMQ management; missing or inaccessible
+queues fail startup.
 
 > The Lego principle: no broker / secret-store / cloud is hardcoded. The
 > emitter target (`YGGDRASIL_CORE_URL`) and Stripe backend (`STRIPE_API_BASE` /

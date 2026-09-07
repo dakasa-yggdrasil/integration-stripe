@@ -10,7 +10,7 @@
 
 `integration-stripe`: the standalone **Stripe leaf adapter** for the
 Yggdrasil control plane. `integration_type stripe`, namespace `global`,
-domain `payments`. yggdrasil-core ↔ adapter over `http_json` RPC; inbound
+domain `payments`. yggdrasil-core ↔ adapter over selectable HTTP/AMQP RPC; inbound
 Stripe webhooks handled by a separate reactor server. Multi-tenant (one
 Stripe account = one instance), Stripe Connect via optional
 `stripe_account_id`.
@@ -32,15 +32,15 @@ allowlisted helpers (`create_refund`, `create_payout`,
 `webhook_server.go` + `hmac.go` (typed errors, `instance_id:event_id`
 dedup, 200-before-emit). The repo deliberately does NOT use the SDK's
 `sig/hmac` or `webhookhttp` packages even though both exist in
-yggdrasil-sdk-go v0.8.3.
+yggdrasil-sdk-go v0.9.1.
 
 ## Transport, versions, ports
 
-- `http_json`; `/rpc/describe`, `/rpc/execute`; timeout 30s.
+- `http_json` by default; AMQP via `YGGDRASIL_TRANSPORT=amqp`; timeout 30s.
 - Ports: RPC `ADAPTER_PORT` 8081, webhook `WEBHOOK_PORT` 8082, health
   `HEALTHCHECK_PORT` 8080.
-- `AdapterVersion` ≈ 2.4.0 (read the constant); SDK pin
-  `yggdrasil-sdk-go` ≈ v0.8.3; Stripe client `stripe-go/v83`; Go 1.25.
+- `AdapterVersion` = 3.0.1; SDK pin `yggdrasil-sdk-go` = v0.9.1; Stripe client
+  `stripe-go/v83`; Go 1.25.
 
 ## Rules
 
@@ -53,8 +53,8 @@ yggdrasil-sdk-go v0.8.3.
 
 ## Manifest may be stale
 
-`manifest/` is maintained separately and can drift from `spec.go` (e.g.
-version `2.2.4` vs `2.4.0`). Do NOT edit `manifest/` as part of a
+`manifest/` is maintained separately and must stay aligned with `spec.go`.
+Do NOT edit `manifest/` as part of a
 docs/context change. No `examples/` dir and no top-level
 `INTEGRATION_CONTRACT.md` / `SURFACE_CONTRACT.md` exist here; adopter
 docs live under `docs/`.
