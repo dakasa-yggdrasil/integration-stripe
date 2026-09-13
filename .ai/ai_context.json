@@ -1,28 +1,28 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-09-06T17:25:17-03:00",
+  "generated_at": "2026-09-13T03:18:02-03:00",
   "primary_language": "go",
   "languages": {
-    ".go": 32,
+    ".go": 35,
     ".json": 9,
     ".yaml": 24,
     ".yml": 6
   },
   "provenance": {
-    "commit": "eddc04d8759a950017b40feb545636f286cc57a9",
-    "dirty": false,
+    "commit": "555148128ab311d893a551a9511dd3b92c4ad798",
+    "dirty": true,
     "files": [
       {
         "path": "AGENTS.md",
-        "sha256": "8f186b198e4e67281e5e366b79b8dc9677c981961f0705c2e303c5b57ab57369"
+        "sha256": "331c0fe0bc8aa561a7202d04626cc61f8e39b84939e5820bf39da282a4976c05"
       },
       {
         "path": "CLAUDE.md",
-        "sha256": "9b737048fa357cfdd73089b1aabc743c27be7d7ac8827a394db4c824a851714f"
+        "sha256": "bbe8e459871236fd01d5b0c7624488f75133ea1a41483261baf7ac14b1005adb"
       },
       {
         "path": "README.md",
-        "sha256": "30ebfe388ea37622ddcd143d271f0ccb258c79ddc34ce178f49775206b681326"
+        "sha256": "9b4b0737e14a249615a107818c32931276d2951942686454ae70c965804de2ca"
       },
       {
         "path": "Taskfile.yml",
@@ -51,8 +51,8 @@
     },
     {
       "path": "providers/stripe/adapter",
-      "files": 21,
-      "kb": 231
+      "files": 23,
+      "kb": 236
     },
     {
       "path": "testdata/stripe-events",
@@ -60,14 +60,14 @@
       "kb": 1
     },
     {
+      "path": "providers/stripe/message",
+      "files": 5,
+      "kb": 22
+    },
+    {
       "path": ".github/workflows",
       "files": 4,
       "kb": 10
-    },
-    {
-      "path": "providers/stripe/message",
-      "files": 4,
-      "kb": 17
     },
     {
       "path": ".",
@@ -108,7 +108,7 @@
   "top_files_by_size": [
     {
       "path": "providers/stripe/adapter/adapter.go",
-      "kb": 53
+      "kb": 54
     },
     {
       "path": "providers/stripe/adapter/spec_test.go",
@@ -116,7 +116,7 @@
     },
     {
       "path": "providers/stripe/adapter/spec.go",
-      "kb": 27
+      "kb": 28
     },
     {
       "path": "providers/stripe/adapter/webhook_endpoint_test.go",
@@ -128,7 +128,7 @@
     },
     {
       "path": "providers/stripe/adapter/reconcile.go",
-      "kb": 14
+      "kb": 15
     },
     {
       "path": "providers/stripe/adapter/surface_query.go",
