@@ -17,7 +17,7 @@ the action catalog and resource→action mapping come from
 Resource operations follow the Yggdrasil universal capability convention:
 
 - `ensure_*` — create-or-update toward a desired state (idempotent).
-- `observe_*` — read; `{id}` filter returns a one-element `items` array, otherwise a paginated list
+- `observe_*`: read; `{id}` filter returns a one-element `items` array, otherwise a paginated list
   (`{items, has_more}`).
 - `destroy_*` — delete; `404` is treated as already-absent success.
 
