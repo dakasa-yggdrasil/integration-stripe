@@ -7,7 +7,7 @@ spec:
   type_ref: { namespace: global, name: stripe }
   operation: observe_subscriptions
   description: |
-    Observe Stripe Subscriptions. Filter {id} → single record; {customer}
+    Observe Stripe Subscriptions. Filter {id} returns a one-element items array; {customer}
     → list-by-customer; else paginated list.
   inputs:
     id: { type: string }

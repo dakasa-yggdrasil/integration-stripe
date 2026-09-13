@@ -3,8 +3,10 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -257,12 +259,12 @@ func observePaymentIntents(ctx context.Context, c *stripe.Client, req contract.A
 		if err != nil {
 			return contract.AdapterExecuteIntegrationResponse{}, err
 		}
-		return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		return observedItems(map[string]any{
 			"payment_intent_id": pi.ID,
 			"status":            string(pi.Status),
 			"amount":            pi.Amount,
 			"currency":          pi.Currency,
-		}}, nil
+		}), nil
 	}
 	limit := intFromInput(in, "limit")
 	if limit <= 0 {
@@ -441,10 +443,10 @@ func observeCustomers(ctx context.Context, c *stripe.Client, req contract.Adapte
 		if err != nil {
 			return contract.AdapterExecuteIntegrationResponse{}, err
 		}
-		return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		return observedItems(map[string]any{
 			"customer_id": cust.ID,
 			"email":       cust.Email,
-		}}, nil
+		}), nil
 	}
 	limit := intFromInput(in, "limit")
 	if limit <= 0 {
@@ -613,7 +615,7 @@ func observeSubscriptions(ctx context.Context, c *stripe.Client, req contract.Ad
 		if err != nil {
 			return contract.AdapterExecuteIntegrationResponse{}, err
 		}
-		return contract.AdapterExecuteIntegrationResponse{Output: subOutput(sub)}, nil
+		return observedItems(subOutput(sub)), nil
 	}
 	limit := intFromInput(in, "limit")
 	if limit <= 0 {
@@ -1186,9 +1188,12 @@ func observeWebhookEndpoints(ctx context.Context, c *stripe.Client, req contract
 		}
 		we, err := c.V1WebhookEndpoints.Retrieve(ctx, id, params)
 		if err != nil {
+			if isStripeResourceAbsent(err) {
+				return observedItems(), nil
+			}
 			return contract.AdapterExecuteIntegrationResponse{}, err
 		}
-		return contract.AdapterExecuteIntegrationResponse{Output: webhookEndpointOutput(we)}, nil
+		return observedItems(webhookEndpointOutput(we)), nil
 	}
 	limit := intFromInput(in, "limit")
 	if limit <= 0 {
@@ -1246,12 +1251,35 @@ func destroyWebhookEndpoint(ctx context.Context, c *stripe.Client, req contract.
 	}
 	we, err := c.V1WebhookEndpoints.Delete(ctx, id, params)
 	if err != nil {
+		if isStripeResourceAbsent(err) {
+			return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+				"id": id, "deleted": true, "already_absent": true,
+			}}, nil
+		}
 		return contract.AdapterExecuteIntegrationResponse{}, err
 	}
 	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
 		"id":      we.ID,
 		"deleted": true,
 	}}, nil
+}
+
+// observedItems preserves the collection contract for a single-resource lookup
+// and authoritative absence. Empty results must encode as [] rather than null.
+func observedItems(items ...map[string]any) contract.AdapterExecuteIntegrationResponse {
+	if items == nil {
+		items = make([]map[string]any, 0)
+	}
+	return contract.AdapterExecuteIntegrationResponse{Output: map[string]any{
+		"items": items, "has_more": false,
+	}}
+}
+
+// Require the provider's typed HTTP 404. An error code in a denied request is
+// not evidence of absence and must never authorize a successful deletion.
+func isStripeResourceAbsent(err error) bool {
+	var stripeErr *stripe.Error
+	return errors.As(err, &stripeErr) && stripeErr.HTTPStatusCode == http.StatusNotFound
 }
 
 func createRefund(ctx context.Context, c *stripe.Client, req contract.AdapterExecuteIntegrationRequest) (contract.AdapterExecuteIntegrationResponse, error) {

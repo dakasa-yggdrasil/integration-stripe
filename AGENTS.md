@@ -55,7 +55,7 @@ API key + webhook secret); Stripe Connect via the optional
 - Ports (`cmd/adapter/main.go`): RPC `ADAPTER_PORT` default **8081**,
   webhook `WEBHOOK_PORT` default **8082**, health `HEALTHCHECK_PORT`
   default **8080** (`/healthz`, `/readyz`, `/metrics`).
-- `AdapterVersion` in `spec.go` = **3.0.1**;
+- `AdapterVersion` in `spec.go` = **3.0.2**;
   `StripeAPIVersion` = `2025-10-29.clover`.
 - SDK pin `yggdrasil-sdk-go` = **v0.9.1** (`go.mod`); Stripe client
   `stripe-go/v83`; Go 1.25.
@@ -75,7 +75,7 @@ API key + webhook secret); Stripe Connect via the optional
 ## Manifest may be stale
 
 `manifest/` is maintained separately from `spec.go` and can drift (e.g.
-`integration_type.stripe.yaml` version should match `spec.go` `3.0.1`). Do
+`integration_type.stripe.yaml` version should match `spec.go` `3.0.2`). Do
 NOT edit `manifest/` as part of a docs/context change — reconcile it as
 its own deliberate step. There is no `examples/` dir and no top-level
 `INTEGRATION_CONTRACT.md` / `SURFACE_CONTRACT.md` in this repo; adopter

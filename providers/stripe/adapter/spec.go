@@ -22,7 +22,7 @@ import (
 const (
 	Provider        = "stripe"
 	IntegrationType = "stripe"
-	AdapterVersion  = "3.0.1"
+	AdapterVersion  = "3.0.2"
 	// StripeAPIVersion pins the Stripe API version. Bumping requires a
 	// full integration test cycle + adapter version bump. Documented in
 	// README.md and integration_type manifest spec.adapter.version notes.
@@ -417,17 +417,17 @@ func describeActionCatalog() []contract.IntegrationActionDefinition {
 		// dispatches GET /v1/payment_intents/{id} when filter.id is set,
 		// list otherwise. destroy maps to POST /cancel (404-tolerant).
 		{Name: OperationEnsurePaymentIntent, Description: "Ensure a Stripe PaymentIntent exists. Set input.confirm=true to also confirm (state-transition collapsed into ensure). Idempotent via Idempotency-Key header.", ResourceTypes: []string{resourcePaymentIntent}, Idempotent: true},
-		{Name: OperationObservePaymentIntents, Description: "Observe Stripe PaymentIntents. Filter {id} → single record; otherwise paginated list (limit, starting_after).", ResourceTypes: []string{resourcePaymentIntent}, Idempotent: true},
+		{Name: OperationObservePaymentIntents, Description: "Observe Stripe PaymentIntents. Filter {id} returns a one-element items array; otherwise a paginated list.", ResourceTypes: []string{resourcePaymentIntent}, Idempotent: true},
 		{Name: OperationDestroyPaymentIntent, Description: "Destroy (cancel) a Stripe PaymentIntent. POST /v1/payment_intents/{id}/cancel. 404 → already-absent success.", ResourceTypes: []string{resourcePaymentIntent}, Idempotent: true},
 
 		// customer triple — ensure GET-by-email-or-id first, POST/PATCH.
 		{Name: OperationEnsureCustomer, Description: "Ensure a Stripe Customer exists for the given email or id. POST new when absent, PATCH deltas when present.", ResourceTypes: []string{resourceCustomer}, Idempotent: true},
-		{Name: OperationObserveCustomers, Description: "Observe Stripe Customers. Filter {id} or {email} → single/by-email lookup; otherwise paginated list.", ResourceTypes: []string{resourceCustomer}, Idempotent: true},
+		{Name: OperationObserveCustomers, Description: "Observe Stripe Customers. Filter {id} returns a one-element items array; {email} filters the list.", ResourceTypes: []string{resourceCustomer}, Idempotent: true},
 		{Name: OperationDestroyCustomer, Description: "Destroy a Stripe Customer. DELETE /v1/customers/{id}. 404 → already-absent success.", ResourceTypes: []string{resourceCustomer}, Idempotent: true},
 
 		// subscription triple.
 		{Name: OperationEnsureSubscription, Description: "Ensure a Stripe Subscription exists for the customer + items. POST when absent, PATCH deltas (cancel_at_period_end etc.) when present.", ResourceTypes: []string{resourceSubscription}, Idempotent: true},
-		{Name: OperationObserveSubscriptions, Description: "Observe Stripe Subscriptions. Filter {id} → single, {customer} → list-by-customer, else paginated list.", ResourceTypes: []string{resourceSubscription}, Idempotent: true},
+		{Name: OperationObserveSubscriptions, Description: "Observe Stripe Subscriptions. Filter {id} returns a one-element items array; {customer} filters the list.", ResourceTypes: []string{resourceSubscription}, Idempotent: true},
 		{Name: OperationDestroySubscription, Description: "Destroy a Stripe Subscription. DELETE /v1/subscriptions/{id} immediate; pass {cancel_at_period_end=true} for graceful update path. 404 → already-absent success.", ResourceTypes: []string{resourceSubscription}, Idempotent: true},
 
 		// charges (read-only) + refunds (money-movement allowlist).
@@ -440,7 +440,7 @@ func describeActionCatalog() []contract.IntegrationActionDefinition {
 		// webhook_endpoint triple.
 		{Name: OperationEnsureWebhookEndpoint, Description: "Adopt a Stripe WebhookEndpoint by exact URL or ID and reconcile its mutable state. Refuses to create because Stripe returns the signing secret only once.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
 		{Name: OperationProvisionWebhookEndpoint, Description: "Create a Stripe WebhookEndpoint once, only when Core supplies a transient next-step secret sink handshake and the integration instance explicitly permits sensitive creation. Recovery after explicit destroy requires a new operator-controlled provisioning generation.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: false},
-		{Name: OperationObserveWebhookEndpoints, Description: "Observe Stripe WebhookEndpoints. Filter {id} → single; otherwise paginated list.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
+		{Name: OperationObserveWebhookEndpoints, Description: "Observe Stripe WebhookEndpoints. Filter {id} returns a one-element items array, or an empty array on provider HTTP 404; otherwise a paginated list.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
 		{Name: OperationDestroyWebhookEndpoint, Description: "Destroy a Stripe WebhookEndpoint. DELETE /v1/webhook_endpoints/{id}. 404 → already-absent success.", ResourceTypes: []string{resourceWebhookEndpoint}, Idempotent: true},
 
 		// Kept action helpers (allowlisted via core's capability_naming_allowlist.yaml).

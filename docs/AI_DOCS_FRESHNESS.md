@@ -7,9 +7,9 @@ The docs-freshness CI reads it: a PR that bumps it is trusted and the AI is skip
 Before a PR: update stale docs, set verified_at_commit to your branch tip.
 On arrival: if this is behind the code you touch, reconcile the docs FIRST.
 
-verified_at_commit: eddc04d8759a950017b40feb545636f286cc57a9
-verified_diff_sha256: 919cc4df1c0f0d3722eda2eb7ca59a3db4b52a169d63fe9735c39936b522645a
+verified_at_commit: 79610c793b0e89e2243acfb4c1f11bb5a0d8d9b5
+verified_diff_sha256: 5c8d532f6871040a71aee7deecc399574f2e82cf957630c6008f8534281595fa
 reconciler_schema: 1
-verified_at: 2026-09-06
+verified_at: 2026-09-13
 by: Codex
-note: Reconciled passive fixed-queue AMQP startup, canonical Core instance identity hydration, safe Stripe webhook provisioning, SDK pin integrity, manifests, and operator documentation.
+note: Reconciled public RPC observations, strict items arrays, typed webhook absence, version 3.0.2, manifests, tests, and operator contracts.

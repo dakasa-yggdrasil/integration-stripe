@@ -105,7 +105,7 @@ and uses these SDK packages (verified from imports):
 
 - **`describe`** ([`message/describe.go`](../providers/stripe/message/describe.go))
   returns `adapter.Describe()`. Core calls it before every execute to verify the
-  adapter version (`3.0.1`) and provider (`stripe`). A mismatched
+  adapter version (`3.0.2`) and provider (`stripe`). A mismatched
   `expected_version` yields `version_mismatch`.
 - **`execute`** ([`message/execute.go`](../providers/stripe/message/execute.go))
   first routes the envelope through `reconcile.Dispatch` (activating §6.5
@@ -146,12 +146,12 @@ the constant + `SupportedExecuteOperations` in `spec.go`, the resource type's
 | Component | Version |
 |---|---|
 | `yggdrasil-sdk-go` | `v0.9.1` |
-| Adapter version (`spec.go`) | `3.0.1` |
-| `integration_type` manifest | `3.0.1` |
-| Latest `CHANGELOG` entry | `3.0.1` (plus an Unreleased section) |
+| Adapter version (`spec.go`) | `3.0.2` |
+| `integration_type` manifest | `3.0.2` |
+| Latest `CHANGELOG` entry | `3.0.2` (plus an Unreleased section) |
 | `stripe-go` | `v83 v83.1.0` |
 | Stripe API version | `2025-10-29.clover` |
 
-> These version sources are aligned at `3.0.1`. Keep the registered catalog
+> These version sources are aligned at `3.0.2`. Keep the registered catalog
 > row, image tag, changelog, and describe response identical when cutting a
 > release.

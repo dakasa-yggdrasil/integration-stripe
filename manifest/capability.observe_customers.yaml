@@ -7,7 +7,7 @@ spec:
   type_ref: { namespace: global, name: stripe }
   operation: observe_customers
   description: |
-    Observe Stripe Customers. Filter {id} → single record via
+    Observe Stripe Customers. Filter {id} returns a one-element items array via
     GET /v1/customers/{id}; {email} → list-by-email; else paginated list.
   inputs:
     id: { type: string }

@@ -233,14 +233,14 @@ documented in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 | Component | Version |
 |---|---|
 | `yggdrasil-sdk-go` | `v0.9.1` (`go.mod`) |
-| Adapter version (`spec.go`) | `3.0.1` |
-| `integration_type` manifest version | `3.0.1` |
+| Adapter version (`spec.go`) | `3.0.2` |
+| `integration_type` manifest version | `3.0.2` |
 | Stripe Go SDK | `stripe-go/v83 v83.1.0` |
 | Pinned Stripe API version | `2025-10-29.clover` |
 | Go | `1.25` |
 
 > The adapter version constant, published-image manifest, and current changelog
-> entry are aligned at `3.0.1`. The describe handshake reports `3.0.1`.
+> entry are aligned at `3.0.2`. The describe handshake reports `3.0.2`.
 
 ## License
 
