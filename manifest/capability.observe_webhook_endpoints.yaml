@@ -7,8 +7,8 @@ spec:
   type_ref: { namespace: global, name: stripe }
   operation: observe_webhook_endpoints
   description: |
-    Observe Stripe WebhookEndpoints. Filter {id} → single record;
-    otherwise paginated list.
+    Observe Stripe WebhookEndpoints. Filter {id} returns a one-element items array;
+    provider HTTP 404 returns an empty items array; otherwise paginated list.
   inputs:
     id: { type: string }
     limit: { type: integer, default: 10 }

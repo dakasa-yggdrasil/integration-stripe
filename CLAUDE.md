@@ -124,7 +124,7 @@ monorepo. Adopter-facing docs are under `docs/`.
   - Webhook: `WEBHOOK_PORT`, default **8082** (local `WebhookServer`).
   - Health/metrics: `HEALTHCHECK_PORT`, default **8080**
     (`/healthz`, `/readyz`, `/metrics`).
-- **AdapterVersion:** `spec.go` `const AdapterVersion` = **3.0.1**.
+- **AdapterVersion:** `spec.go` `const AdapterVersion` = **3.0.2**.
   `StripeAPIVersion` pins the
   Stripe API version (`2025-10-29.clover`); bumping it requires a full
   integration-test cycle + version bump.
@@ -138,7 +138,7 @@ manifests that get published. It is **not** auto-derived from `spec.go`
 at build time, so it can drift. As of this writing
 `manifest/integration_type.stripe.yaml` declares
 `spec.version` / `adapter.version` must match `spec.go` `AdapterVersion`, now
-**3.0.1**.
+**3.0.2**.
 
 **Do NOT edit `manifest/` as part of a CLAUDE.md / docs change.** If you
 need the manifest reconciled to `spec.go`, do it as its own deliberate

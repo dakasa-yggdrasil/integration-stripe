@@ -39,7 +39,7 @@ yggdrasil-sdk-go v0.9.1.
 - `http_json` by default; AMQP via `YGGDRASIL_TRANSPORT=amqp`; timeout 30s.
 - Ports: RPC `ADAPTER_PORT` 8081, webhook `WEBHOOK_PORT` 8082, health
   `HEALTHCHECK_PORT` 8080.
-- `AdapterVersion` = 3.0.1; SDK pin `yggdrasil-sdk-go` = v0.9.1; Stripe client
+- `AdapterVersion` = 3.0.2; SDK pin `yggdrasil-sdk-go` = v0.9.1; Stripe client
   `stripe-go/v83`; Go 1.25.
 
 ## Rules

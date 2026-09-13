@@ -17,7 +17,7 @@ the action catalog and resource→action mapping come from
 Resource operations follow the Yggdrasil universal capability convention:
 
 - `ensure_*` — create-or-update toward a desired state (idempotent).
-- `observe_*` — read; `{id}` filter → single record, otherwise a paginated list
+- `observe_*` — read; `{id}` filter returns a one-element `items` array, otherwise a paginated list
   (`{items, has_more}`).
 - `destroy_*` — delete; `404` is treated as already-absent success.
 
@@ -67,7 +67,7 @@ derived from input or `sha256(amount+currency+customer)`.
 | `payment_intent_id`, `amount` (int), `currency` (ISO-4217 lowercase), `customer`, `payment_method`, `payment_method_types` (array, default `["card"]`), `capture_method` (default `automatic`), `confirm` (bool, default `false`), `setup_future_usage`, `return_url`, `metadata` (obj), `stripe_account`, `idempotency_key` | `payment_intent_id`, `client_secret`, `status`, `amount` (int), `currency`, `next_action` (obj) |
 
 ### `observe_payment_intents`
-Filter `{id}` → single record (`GET /v1/payment_intents/{id}`); otherwise
+Filter `{id}` returns a one-element `items` array (`GET /v1/payment_intents/{id}`); otherwise
 paginated list.
 
 | Inputs | Outputs |
@@ -97,7 +97,7 @@ POST new when absent, PATCH deltas when present. Idempotency key defaults to
 | `customer_id` (set → PATCH path), `email`, `name`, `phone`, `metadata` (obj), `stripe_account`, `idempotency_key` | `customer_id`, `email`, `created` (int), `updated` (bool) |
 
 ### `observe_customers`
-`{id}` → single; `{email}` → list-by-email; else paginated list.
+`{id}` returns a one-element `items` array; `{email}` → list-by-email; else paginated list.
 
 | Inputs | Outputs |
 |---|---|
@@ -126,7 +126,7 @@ POST when absent, PATCH deltas when present. Defaults `payment_behavior` to
 | `subscription_id` (set → PATCH), `customer`, `items` (array of obj), `payment_behavior` (default `default_incomplete`), `trial_end` (int, unix), `cancel_at_period_end` (bool), `metadata` (obj), `stripe_account`, `idempotency_key` | `subscription_id`, `status`, `latest_invoice`, `cancel_at_period_end` (bool), `canceled_at` (int) |
 
 ### `observe_subscriptions`
-`{id}` → single; `{customer}` → list-by-customer; else paginated list.
+`{id}` returns a one-element `items` array; `{customer}` → list-by-customer; else paginated list.
 
 | Inputs | Outputs |
 |---|---|
@@ -227,18 +227,22 @@ one-shot, not generally retry-safe: an ambiguous completion must be observed,
 then explicitly destroyed and recreated if its one-time secret was not stored.
 
 ### `observe_webhook_endpoints`
-`{id}` → single; otherwise paginated list.
+`{id}` returns a one-element `items` array; otherwise paginated list.
 
 | Inputs | Outputs |
 |---|---|
-| `id`, `limit` (int, default `10`), `stripe_account` | single endpoint fields or `items` (array), `has_more` (bool); endpoint fields include `livemode`, `application`, `created_at`, `description`, and `metadata` |
+| `id`, `limit` (int, default `10`), `stripe_account` | `items` (array), `has_more` (bool); endpoint fields include `livemode`, `application`, `created_at`, `description`, and `metadata` |
+
+By-ID provider HTTP 404 yields `items: []`; permission and transport failures remain errors.
+The public RPC reconcile envelope is `data.output: {items, cursor}`. A missing,
+null, or malformed items array fails the observation instead of silently losing data.
 
 ### `destroy_webhook_endpoint`
 `DELETE /v1/webhook_endpoints/{id}`. `404` → already-absent success.
 
 | Inputs | Outputs |
 |---|---|
-| `id`, `ref` (Destroy alias), `stripe_account` | `id`, `deleted` (bool) |
+| `id`, `ref` (Destroy alias), `stripe_account` | `id`, `deleted` (bool), `already_absent` (true on provider HTTP 404) |
 
 ### `verify_webhook_signature`
 Standalone HMAC-SHA256 verification of a `Stripe-Signature` header. Read-only

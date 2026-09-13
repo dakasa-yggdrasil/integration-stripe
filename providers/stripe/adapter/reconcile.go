@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/dakasa-yggdrasil/yggdrasil-sdk-go/adapter"
@@ -72,7 +73,8 @@ func (r *paymentIntentReconciler) Observe(ctx context.Context, filter map[string
 	if err != nil {
 		return nil, "", err
 	}
-	return extractItems(out), "", nil
+	items, err := extractItems(out)
+	return items, "", err
 }
 
 func (r *paymentIntentReconciler) Destroy(ctx context.Context, ref string) error {
@@ -122,7 +124,8 @@ func (r *customerReconciler) Observe(ctx context.Context, filter map[string]any)
 	if err != nil {
 		return nil, "", err
 	}
-	return extractItems(out), "", nil
+	items, err := extractItems(out)
+	return items, "", err
 }
 
 func (r *customerReconciler) Destroy(ctx context.Context, ref string) error {
@@ -167,7 +170,8 @@ func (r *subscriptionReconciler) Observe(ctx context.Context, filter map[string]
 	if err != nil {
 		return nil, "", err
 	}
-	return extractItems(out), "", nil
+	items, err := extractItems(out)
+	return items, "", err
 }
 
 func (r *subscriptionReconciler) Destroy(ctx context.Context, ref string) error {
@@ -212,7 +216,8 @@ func (r *webhookEndpointReconciler) Observe(ctx context.Context, filter map[stri
 	if err != nil {
 		return nil, "", err
 	}
-	return extractItems(out), "", nil
+	items, err := extractItems(out)
+	return items, "", err
 }
 
 func (r *webhookEndpointReconciler) Destroy(ctx context.Context, ref string) error {
@@ -316,22 +321,36 @@ func instanceFromPayload(in reconcilePayload, fallback string) string {
 	return fallback
 }
 
-// extractItems pulls the items array from a paged observe response,
-// converting each map[string]any element into a reconcilePayload. The
-// observe handlers always wrap results in {"items": [...], "has_more": ...}.
-func extractItems(resp reconcilePayload) []reconcilePayload {
-	if resp == nil {
-		return nil
+// extractItems rejects malformed observation envelopes instead of presenting
+// lost data as a successful empty result. Both native and JSON arrays are valid.
+func extractItems(resp reconcilePayload) ([]reconcilePayload, error) {
+	out := make([]reconcilePayload, 0)
+	switch raw := resp["items"].(type) {
+	case []map[string]any:
+		if raw == nil {
+			return nil, fmt.Errorf("observe response missing items array")
+		}
+		for i, item := range raw {
+			if item == nil {
+				return nil, fmt.Errorf("observe response items[%d] must be an object", i)
+			}
+			out = append(out, reconcilePayload(item))
+		}
+	case []any:
+		if raw == nil {
+			return nil, fmt.Errorf("observe response missing items array")
+		}
+		for i, item := range raw {
+			obj, ok := item.(map[string]any)
+			if !ok || obj == nil {
+				return nil, fmt.Errorf("observe response items[%d] must be an object", i)
+			}
+			out = append(out, reconcilePayload(obj))
+		}
+	default:
+		return nil, fmt.Errorf("observe response missing items array")
 	}
-	raw, ok := resp["items"].([]map[string]any)
-	if !ok {
-		return nil
-	}
-	out := make([]reconcilePayload, 0, len(raw))
-	for _, item := range raw {
-		out = append(out, reconcilePayload(item))
-	}
-	return out
+	return out, nil
 }
 
 // WireReconcilers installs reconcile.RegisterReconciler handlers for

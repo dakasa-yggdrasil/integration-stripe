@@ -40,7 +40,7 @@ The adapter exposes three listeners (see [Operations](OPERATIONS.md) for ports):
 ### Production image
 
 ```
-ghcr.io/dakasa-yggdrasil/integration-stripe:v3.0.1
+ghcr.io/dakasa-yggdrasil/integration-stripe:v3.0.2
 ```
 
 Published by `.github/workflows/release.yml` on tag push (`v*`) and on pushes to
@@ -63,7 +63,7 @@ curl -s localhost:8081/rpc/describe | jq '{
 }'
 ```
 
-Expected in the default HTTP mode: `provider: "stripe"`, version `3.0.1`,
+Expected in the default HTTP mode: `provider: "stripe"`, version `3.0.2`,
 `transport: "http_json"`,
 `capabilities: ["describe","execute"]`, 10 resource types, and 22
 action-catalog entries (20 capabilities + 2 framework reactors).
