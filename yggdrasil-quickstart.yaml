@@ -167,6 +167,7 @@ spec:
                       app: integration-stripe-adapter
                   spec:
                     serviceAccountName: integration-stripe
+                    terminationGracePeriodSeconds: 45
                     containers:
                       - name: adapter
                         image: "{{ inputs.image }}"

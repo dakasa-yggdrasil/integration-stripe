@@ -65,11 +65,11 @@ func newPaymentIntentReconciler(instanceID string) *paymentIntentReconciler {
 }
 
 func (r *paymentIntentReconciler) Ensure(ctx context.Context, d reconcilePayload) (reconcilePayload, error) {
-	return r.dispatch(OperationEnsurePaymentIntent, d)
+	return r.dispatch(ctx, OperationEnsurePaymentIntent, d)
 }
 
 func (r *paymentIntentReconciler) Observe(ctx context.Context, filter map[string]any) ([]reconcilePayload, string, error) {
-	out, err := r.dispatch(OperationObservePaymentIntents, filter)
+	out, err := r.dispatch(ctx, OperationObservePaymentIntents, filter)
 	if err != nil {
 		return nil, "", err
 	}
@@ -78,7 +78,7 @@ func (r *paymentIntentReconciler) Observe(ctx context.Context, filter map[string
 }
 
 func (r *paymentIntentReconciler) Destroy(ctx context.Context, ref string) error {
-	_, err := r.dispatch(OperationDestroyPaymentIntent, reconcilePayload{"payment_intent_id": ref})
+	_, err := r.dispatch(ctx, OperationDestroyPaymentIntent, reconcilePayload{"payment_intent_id": ref})
 	return err
 }
 
@@ -96,12 +96,12 @@ func (r *paymentIntentReconciler) DestroyWithDesired(ctx context.Context, ref st
 	if _, present := desired["payment_intent_id"]; !present {
 		desired["payment_intent_id"] = ref
 	}
-	_, err := r.dispatch(OperationDestroyPaymentIntent, desired)
+	_, err := r.dispatch(ctx, OperationDestroyPaymentIntent, desired)
 	return err
 }
 
-func (r *paymentIntentReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
-	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
+func (r *paymentIntentReconciler) dispatch(ctx context.Context, op string, in reconcilePayload) (reconcilePayload, error) {
+	resp, err := ExecuteContext(ctx, buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
 		return nil, err
 	}
@@ -116,11 +116,11 @@ func newCustomerReconciler(instanceID string) *customerReconciler {
 }
 
 func (r *customerReconciler) Ensure(ctx context.Context, d reconcilePayload) (reconcilePayload, error) {
-	return r.dispatch(OperationEnsureCustomer, d)
+	return r.dispatch(ctx, OperationEnsureCustomer, d)
 }
 
 func (r *customerReconciler) Observe(ctx context.Context, filter map[string]any) ([]reconcilePayload, string, error) {
-	out, err := r.dispatch(OperationObserveCustomers, filter)
+	out, err := r.dispatch(ctx, OperationObserveCustomers, filter)
 	if err != nil {
 		return nil, "", err
 	}
@@ -129,7 +129,7 @@ func (r *customerReconciler) Observe(ctx context.Context, filter map[string]any)
 }
 
 func (r *customerReconciler) Destroy(ctx context.Context, ref string) error {
-	_, err := r.dispatch(OperationDestroyCustomer, reconcilePayload{"customer_id": ref})
+	_, err := r.dispatch(ctx, OperationDestroyCustomer, reconcilePayload{"customer_id": ref})
 	return err
 }
 
@@ -142,12 +142,12 @@ func (r *customerReconciler) DestroyWithDesired(ctx context.Context, ref string,
 	if _, present := desired["customer_id"]; !present {
 		desired["customer_id"] = ref
 	}
-	_, err := r.dispatch(OperationDestroyCustomer, desired)
+	_, err := r.dispatch(ctx, OperationDestroyCustomer, desired)
 	return err
 }
 
-func (r *customerReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
-	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
+func (r *customerReconciler) dispatch(ctx context.Context, op string, in reconcilePayload) (reconcilePayload, error) {
+	resp, err := ExecuteContext(ctx, buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
 		return nil, err
 	}
@@ -162,11 +162,11 @@ func newSubscriptionReconciler(instanceID string) *subscriptionReconciler {
 }
 
 func (r *subscriptionReconciler) Ensure(ctx context.Context, d reconcilePayload) (reconcilePayload, error) {
-	return r.dispatch(OperationEnsureSubscription, d)
+	return r.dispatch(ctx, OperationEnsureSubscription, d)
 }
 
 func (r *subscriptionReconciler) Observe(ctx context.Context, filter map[string]any) ([]reconcilePayload, string, error) {
-	out, err := r.dispatch(OperationObserveSubscriptions, filter)
+	out, err := r.dispatch(ctx, OperationObserveSubscriptions, filter)
 	if err != nil {
 		return nil, "", err
 	}
@@ -175,7 +175,7 @@ func (r *subscriptionReconciler) Observe(ctx context.Context, filter map[string]
 }
 
 func (r *subscriptionReconciler) Destroy(ctx context.Context, ref string) error {
-	_, err := r.dispatch(OperationDestroySubscription, reconcilePayload{"subscription_id": ref})
+	_, err := r.dispatch(ctx, OperationDestroySubscription, reconcilePayload{"subscription_id": ref})
 	return err
 }
 
@@ -188,12 +188,12 @@ func (r *subscriptionReconciler) DestroyWithDesired(ctx context.Context, ref str
 	if _, present := desired["subscription_id"]; !present {
 		desired["subscription_id"] = ref
 	}
-	_, err := r.dispatch(OperationDestroySubscription, desired)
+	_, err := r.dispatch(ctx, OperationDestroySubscription, desired)
 	return err
 }
 
-func (r *subscriptionReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
-	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
+func (r *subscriptionReconciler) dispatch(ctx context.Context, op string, in reconcilePayload) (reconcilePayload, error) {
+	resp, err := ExecuteContext(ctx, buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
 		return nil, err
 	}
@@ -208,11 +208,11 @@ func newWebhookEndpointReconciler(instanceID string) *webhookEndpointReconciler 
 }
 
 func (r *webhookEndpointReconciler) Ensure(ctx context.Context, d reconcilePayload) (reconcilePayload, error) {
-	return r.dispatch(OperationEnsureWebhookEndpoint, d)
+	return r.dispatch(ctx, OperationEnsureWebhookEndpoint, d)
 }
 
 func (r *webhookEndpointReconciler) Observe(ctx context.Context, filter map[string]any) ([]reconcilePayload, string, error) {
-	out, err := r.dispatch(OperationObserveWebhookEndpoints, filter)
+	out, err := r.dispatch(ctx, OperationObserveWebhookEndpoints, filter)
 	if err != nil {
 		return nil, "", err
 	}
@@ -221,7 +221,7 @@ func (r *webhookEndpointReconciler) Observe(ctx context.Context, filter map[stri
 }
 
 func (r *webhookEndpointReconciler) Destroy(ctx context.Context, ref string) error {
-	_, err := r.dispatch(OperationDestroyWebhookEndpoint, reconcilePayload{"id": ref})
+	_, err := r.dispatch(ctx, OperationDestroyWebhookEndpoint, reconcilePayload{"id": ref})
 	return err
 }
 
@@ -234,12 +234,12 @@ func (r *webhookEndpointReconciler) DestroyWithDesired(ctx context.Context, ref 
 	if _, present := desired["id"]; !present {
 		desired["id"] = ref
 	}
-	_, err := r.dispatch(OperationDestroyWebhookEndpoint, desired)
+	_, err := r.dispatch(ctx, OperationDestroyWebhookEndpoint, desired)
 	return err
 }
 
-func (r *webhookEndpointReconciler) dispatch(op string, in reconcilePayload) (reconcilePayload, error) {
-	resp, err := Execute(buildExecuteRequest(op, in, r.instanceID))
+func (r *webhookEndpointReconciler) dispatch(ctx context.Context, op string, in reconcilePayload) (reconcilePayload, error) {
+	resp, err := ExecuteContext(ctx, buildExecuteRequest(op, in, r.instanceID))
 	if err != nil {
 		return nil, err
 	}

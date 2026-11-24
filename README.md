@@ -250,3 +250,7 @@ Apache-2.0 — see [LICENSE](LICENSE).
 
 *Part of [Yggdrasil](https://github.com/dakasa-yggdrasil/yggdrasil-core). Last
 updated 2026-06-01.*
+
+## Planned shutdown
+
+The selected common SDK is signed `v0.10.0`. RPC caller context reaches the original provider request, and planned stop retains the exact original handler, reply and settlement before process exit. See [the shutdown and adoption contract](docs/SDK-GRACEFUL-SHUTDOWN.md) for bounded waits, uncertainty, explicit example grace and separate runtime adoption.

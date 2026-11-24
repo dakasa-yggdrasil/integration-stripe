@@ -77,7 +77,7 @@ The reactor is served **separately from the SDK RPC mux**:
   that the tests assert on concretely to defeat any silent-pass refactor.
 
 **Note — the SDK ships equivalents this repo deliberately does NOT use.**
-`yggdrasil-sdk-go` v0.9.1 has both `sig/hmac/stripe.go` and
+`yggdrasil-sdk-go` v0.10.0 has both `sig/hmac/stripe.go` and
 `webhookhttp/server.go`. This adapter keeps its own `hmac.go` +
 `webhook_server.go` instead, so the reactor surface stays under local
 control (typed errors, dedup map, 200-before-emit ordering). If you're
@@ -128,7 +128,7 @@ monorepo. Adopter-facing docs are under `docs/`.
   `StripeAPIVersion` pins the
   Stripe API version (`2025-10-29.clover`); bumping it requires a full
   integration-test cycle + version bump.
-- **SDK pin:** `go.mod` `dakasa-yggdrasil/yggdrasil-sdk-go` = **v0.9.1**.
+- **SDK pin:** `go.mod` `dakasa-yggdrasil/yggdrasil-sdk-go` = **v0.10.0**.
   Stripe client: `stripe/stripe-go/v83`. Go 1.25.
 
 ## Manifest is generated/maintained separately — may be stale

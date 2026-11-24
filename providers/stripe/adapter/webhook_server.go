@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -32,6 +33,11 @@ type WebhookServer struct {
 	emitter   RTAEmitter
 	dedup     sync.Map // event_id -> dedupEntry
 	srv       *http.Server
+	workMu    sync.Mutex
+	stopping  bool
+	work      sync.WaitGroup
+	joinOnce  sync.Once
+	joined    chan struct{}
 }
 
 // RTAEmitter abstracts the RTA publish path so tests can swap it for a
@@ -48,6 +54,7 @@ func NewWebhookServer(logger *zap.Logger, instances map[string]config.InstanceCo
 	s := &WebhookServer{
 		logger:    logger,
 		instances: instances,
+		joined:    make(chan struct{}),
 		srv: &http.Server{
 			Addr:              addr,
 			Handler:           mux,
@@ -69,8 +76,30 @@ func (s *WebhookServer) Handler() http.Handler { return s.srv.Handler }
 // invoked.
 func (s *WebhookServer) ListenAndServe() error { return s.srv.ListenAndServe() }
 
-// Shutdown gracefully stops the server.
-func (s *WebhookServer) Shutdown(ctx context.Context) error { return s.srv.Shutdown(ctx) }
+// Shutdown closes admission and joins the same original HTTP and async work.
+// The caller's deadline bounds only its wait, not an admitted emitter context.
+func (s *WebhookServer) Shutdown(ctx context.Context) error {
+	s.workMu.Lock()
+	s.stopping = true
+	s.workMu.Unlock()
+	s.joinOnce.Do(func() {
+		go func() { s.work.Wait(); close(s.joined) }()
+	})
+	if err := s.srv.Shutdown(ctx); err != nil {
+		return err
+	}
+	select {
+	case <-s.joined:
+		return nil
+	default:
+	}
+	select {
+	case <-s.joined:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("original webhook work remains incomplete: %w", ctx.Err())
+	}
+}
 
 // handleStripeWebhook implements the full reactor flow:
 //
@@ -87,6 +116,15 @@ func (s *WebhookServer) Shutdown(ctx context.Context) error { return s.srv.Shutd
 // not trigger Stripe's retry storm. Emit failures log but never
 // influence the HTTP response.
 func (s *WebhookServer) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
+	s.workMu.Lock()
+	if s.stopping {
+		s.workMu.Unlock()
+		http.Error(w, "webhook server stopping", http.StatusServiceUnavailable)
+		return
+	}
+	s.work.Add(1)
+	s.workMu.Unlock()
+	defer s.work.Done()
 	instanceID := strings.TrimPrefix(r.URL.Path, "/webhooks/stripe/")
 	if instanceID == "" {
 		http.Error(w, "instance_id required", http.StatusBadRequest)
@@ -134,7 +172,8 @@ func (s *WebhookServer) handleStripeWebhook(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	StripeWebhookReceived.WithLabelValues(ev.Type, instanceID).Inc()
-	go s.evictExpired()
+	s.work.Add(1)
+	go func() { defer s.work.Done(); s.evictExpired() }()
 
 	// 200 BEFORE emit (spec §2.5).
 	w.WriteHeader(http.StatusOK)
@@ -152,7 +191,9 @@ func (s *WebhookServer) handleStripeWebhook(w http.ResponseWriter, r *http.Reque
 		// Decouple the emit from the request lifecycle — the response
 		// has already been written, so a long emit shouldn't hold the
 		// HTTP connection open.
+		s.work.Add(1)
 		go func() {
+			defer s.work.Done()
 			emitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := s.emitter.Emit(emitCtx, routingKey, envelope); err != nil {
