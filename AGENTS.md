@@ -45,7 +45,7 @@ API key + webhook secret); Stripe Connect via the optional
 - `providers/stripe/adapter/hmac.go` is a **local** Stripe-Signature
   verifier with typed errors. The repo deliberately does NOT use the
   SDK's `sig/hmac` or `webhookhttp` packages (both exist in
-  yggdrasil-sdk-go v0.9.1) — keep the local error/dedup contract; tests
+  yggdrasil-sdk-go v0.10.0) — keep the local error/dedup contract; tests
   encode it.
 
 ## Transport, versions, ports
@@ -57,7 +57,7 @@ API key + webhook secret); Stripe Connect via the optional
   default **8080** (`/healthz`, `/readyz`, `/metrics`).
 - `AdapterVersion` in `spec.go` = **3.0.2**;
   `StripeAPIVersion` = `2025-10-29.clover`.
-- SDK pin `yggdrasil-sdk-go` = **v0.9.1** (`go.mod`); Stripe client
+- SDK pin `yggdrasil-sdk-go` = **v0.10.0** (`go.mod`); Stripe client
   `stripe-go/v83`; Go 1.25.
 
 ## Non-negotiable rules

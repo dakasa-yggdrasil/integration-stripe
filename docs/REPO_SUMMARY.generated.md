@@ -1,10 +1,10 @@
 # Repo Summary (generated)
 
-_Generated from HEAD at: 2026-09-06T17:25:17-03:00_
+_Generated from HEAD at: 2026-11-24T19:57:53-03:00_
 
 ## Languages
 
-- `.go`: 32 files
+- `.go`: 38 files
 - `.json`: 9 files
 - `.yaml`: 24 files
 - `.yml`: 6 files
@@ -21,33 +21,33 @@ _Generated from HEAD at: 2026-09-06T17:25:17-03:00_
 
 ## Top Directories by File Count
 
-- manifest: 23 files (26.1 KB)
-- providers/stripe/adapter: 21 files (231.4 KB)
+- providers/stripe/adapter: 24 files (240.5 KB)
+- manifest: 23 files (26.2 KB)
+- providers/stripe/message: 6 files (29.7 KB)
 - testdata/stripe-events: 6 files (1.3 KB)
 - .github/workflows: 4 files (10.2 KB)
-- providers/stripe/message: 4 files (17.8 KB)
-- .: 3 files (13.6 KB)
+- .: 3 files (13.7 KB)
 - surface-ui: 3 files (2.0 KB)
+- cmd/adapter: 2 files (14.8 KB)
 - pkg/contractcheck: 2 files (9.4 KB)
 - providers/stripe/config: 2 files (5.2 KB)
-- cmd/adapter: 1 files (4.6 KB)
 - family/contract: 1 files (9.4 KB)
 - integration_tests: 1 files (5.6 KB)
 
 ## Heaviest Files
 
-- providers/stripe/adapter/adapter.go: 53.8 KB
+- providers/stripe/adapter/adapter.go: 54.6 KB
 - providers/stripe/adapter/spec_test.go: 30.3 KB
-- providers/stripe/adapter/spec.go: 27.9 KB
+- providers/stripe/adapter/spec.go: 28.0 KB
 - providers/stripe/adapter/webhook_endpoint_test.go: 23.9 KB
 - providers/stripe/adapter/surface_query_test.go: 16.8 KB
-- providers/stripe/adapter/reconcile.go: 14.9 KB
+- providers/stripe/adapter/reconcile.go: 15.7 KB
 - providers/stripe/adapter/surface_query.go: 13.3 KB
-- yggdrasil-quickstart.yaml: 12.0 KB
+- yggdrasil-quickstart.yaml: 12.1 KB
 - family/contract/types.go: 9.4 KB
 - manifest/integration_type.stripe.yaml: 8.4 KB
+- cmd/adapter/main_original_drain_test.go: 8.4 KB
 - providers/stripe/message/execute.go: 7.6 KB
-- providers/stripe/adapter/reconcile_dispatch_test.go: 7.3 KB
 
 ## Ops & Messaging
 
@@ -59,7 +59,7 @@ _Generated from HEAD at: 2026-09-06T17:25:17-03:00_
 **Go modules (require):**
 - github.com/beorn7/perks v1.0.1 // indirect
 - github.com/cespare/xxhash/v2 v2.3.0 // indirect
-- github.com/dakasa-yggdrasil/yggdrasil-sdk-go v0.9.1
+- github.com/dakasa-yggdrasil/yggdrasil-sdk-go v0.10.0
 - github.com/davecgh/go-spew v1.1.1 // indirect
 - github.com/google/uuid v1.6.0
 - github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -68,7 +68,7 @@ _Generated from HEAD at: 2026-09-06T17:25:17-03:00_
 - github.com/prometheus/client_model v0.6.2 // indirect
 - github.com/prometheus/common v0.66.1 // indirect
 - github.com/prometheus/procfs v0.16.1 // indirect
-- github.com/rabbitmq/amqp091-go v1.10.0 // indirect
+- github.com/rabbitmq/amqp091-go v1.13.0 // indirect
 - github.com/stretchr/testify v1.11.1
 - github.com/stripe/stripe-go/v83 v83.1.0
 - go.uber.org/multierr v1.10.0 // indirect

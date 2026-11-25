@@ -72,29 +72,76 @@ func main() {
 		logger.Fatal("unsupported YGGDRASIL_TRANSPORT", zap.String("value", transport))
 	}
 
+	ctx, stopAdmission := context.WithCancel(adapter.WithSignalHandler(context.Background()))
+	defer stopAdmission()
+
 	whSrv := ad.NewWebhookServer(logger, instances, ":"+envOrDefault("WEBHOOK_PORT", "8082"))
-	go func() {
-		if err := whSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("webhook server", zap.Error(err))
-		}
-	}()
+	webhookFailure := serveSideListener(whSrv.ListenAndServe, logger, stopAdmission)
 
 	healthSrv := newHealthServer()
-	go func() {
-		if err := healthSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("health server", zap.Error(err))
-		}
-	}()
+	healthFailure := serveHealthServer(healthSrv, logger, stopAdmission)
 
-	ctx := adapter.WithSignalHandler(context.Background())
-	if err := a.Run(ctx); err != nil {
-		logger.Fatal("adapter run", zap.Error(err))
+	runErr, drainErr := runAndJoinOriginalDrain(ctx, a)
+	if drainErr != nil {
+		logger.Error("original adapter drain is unqualified; holding process", zap.Error(drainErr))
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = whSrv.Shutdown(shutdownCtx)
-	_ = healthSrv.Shutdown(shutdownCtx)
+	for _, shutdown := range []func(context.Context) error{whSrv.Shutdown, healthSrv.Shutdown} {
+		if err := shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Warn("side listener shutdown exceeded wait; joining original work", zap.Error(err))
+			if joined := shutdown(context.Background()); joined != nil {
+				logger.Error("original side listener completion is unqualified; holding process", zap.Error(joined))
+				for {
+					time.Sleep(time.Hour)
+				}
+			}
+		}
+	}
+	if runErr != nil {
+		logger.Fatal("adapter run after original drain joined", zap.Error(runErr))
+	}
+	for _, failure := range []<-chan error{webhookFailure, healthFailure} {
+		select {
+		case err := <-failure:
+			logger.Fatal("side listener after original drain joined", zap.Error(err))
+		default:
+		}
+	}
+}
+
+// A failed side listener stops the same Run's admission, then its original
+// completion still owns all provider handlers, replies and settlement.
+func serveHealthServer(server *http.Server, logger *zap.Logger, stopAdmission context.CancelFunc) <-chan error {
+	return serveSideListener(server.ListenAndServe, logger, stopAdmission)
+}
+
+func serveSideListener(serve func() error, logger *zap.Logger, stopAdmission context.CancelFunc) <-chan error {
+	failure := make(chan error, 1)
+	go func() {
+		if err := serve(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("side listener failed; stopping admission", zap.Error(err))
+			failure <- err
+			stopAdmission()
+		}
+	}()
+	return failure
+}
+
+// originalDrainRunner is the same SDK runtime that owns the first Run handle.
+// WaitDrained limits no handler and never starts replacement cleanup.
+type originalDrainRunner interface {
+	Run(context.Context) error
+	WaitDrained(context.Context) error
+}
+
+func runAndJoinOriginalDrain(ctx context.Context, a originalDrainRunner) (error, error) {
+	runErr := a.Run(ctx)
+	return runErr, a.WaitDrained(context.Background())
 }
 
 func newHealthServer() *http.Server {

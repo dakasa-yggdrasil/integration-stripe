@@ -1,28 +1,28 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-09-13T04:43:46-03:00",
+  "generated_at": "2026-11-24T19:57:53-03:00",
   "primary_language": "go",
   "languages": {
-    ".go": 35,
+    ".go": 38,
     ".json": 9,
     ".yaml": 24,
     ".yml": 6
   },
   "provenance": {
-    "commit": "79610c793b0e89e2243acfb4c1f11bb5a0d8d9b5",
+    "commit": "e8c36ef7c5770a6744356d08905de21c5c437754",
     "dirty": true,
     "files": [
       {
         "path": "AGENTS.md",
-        "sha256": "331c0fe0bc8aa561a7202d04626cc61f8e39b84939e5820bf39da282a4976c05"
+        "sha256": "d6e9abb5160de3d07587406abed24409402ed4b24dbdcd30286959e103afcd42"
       },
       {
         "path": "CLAUDE.md",
-        "sha256": "bbe8e459871236fd01d5b0c7624488f75133ea1a41483261baf7ac14b1005adb"
+        "sha256": "ab719e164e3877dde6f8edd8bd8f57dc2042a59683290f66e815b6d87a464d78"
       },
       {
         "path": "README.md",
-        "sha256": "9b4b0737e14a249615a107818c32931276d2951942686454ae70c965804de2ca"
+        "sha256": "3e831607a2a17dc9990d85e585146f675064435b8955a6ce9ed180afc4b89ee2"
       },
       {
         "path": "Taskfile.yml",
@@ -34,35 +34,35 @@
       },
       {
         "path": "docker-compose.yml",
-        "sha256": "35b027e09eb5825afd9a134bfa12aa1650bb6b236992254f4e216857a626bb1f"
+        "sha256": "8b6edfe07ad26c73a5e8a258447ae01864a2d0de00bd5f770e68c10265c45c75"
       },
       {
         "path": "go.mod",
-        "sha256": "b8bf4c1e8386906d6c23d687af219010ec91ddd37bbc9aba5915048e48812cbd"
+        "sha256": "2f3d2aac61f8ce3a43f7e8f0ccb0fc567549a3b0e4a42854971fc26437862ffc"
       }
     ]
   },
   "service": {},
   "top_dirs": [
     {
+      "path": "providers/stripe/adapter",
+      "files": 24,
+      "kb": 240
+    },
+    {
       "path": "manifest",
       "files": 23,
       "kb": 26
     },
     {
-      "path": "providers/stripe/adapter",
-      "files": 23,
-      "kb": 236
+      "path": "providers/stripe/message",
+      "files": 6,
+      "kb": 29
     },
     {
       "path": "testdata/stripe-events",
       "files": 6,
       "kb": 1
-    },
-    {
-      "path": "providers/stripe/message",
-      "files": 5,
-      "kb": 22
     },
     {
       "path": ".github/workflows",
@@ -80,6 +80,11 @@
       "kb": 2
     },
     {
+      "path": "cmd/adapter",
+      "files": 2,
+      "kb": 14
+    },
+    {
       "path": "pkg/contractcheck",
       "files": 2,
       "kb": 9
@@ -88,11 +93,6 @@
       "path": "providers/stripe/config",
       "files": 2,
       "kb": 5
-    },
-    {
-      "path": "cmd/adapter",
-      "files": 1,
-      "kb": 4
     },
     {
       "path": "family/contract",
@@ -147,11 +147,11 @@
       "kb": 8
     },
     {
-      "path": "providers/stripe/message/execute.go",
-      "kb": 7
+      "path": "cmd/adapter/main_original_drain_test.go",
+      "kb": 8
     },
     {
-      "path": "providers/stripe/adapter/reconcile_dispatch_test.go",
+      "path": "providers/stripe/message/execute.go",
       "kb": 7
     }
   ],
@@ -171,7 +171,7 @@
     "go_modules": [
       "github.com/beorn7/perks v1.0.1 // indirect",
       "github.com/cespare/xxhash/v2 v2.3.0 // indirect",
-      "github.com/dakasa-yggdrasil/yggdrasil-sdk-go v0.9.1",
+      "github.com/dakasa-yggdrasil/yggdrasil-sdk-go v0.10.0",
       "github.com/davecgh/go-spew v1.1.1 // indirect",
       "github.com/google/uuid v1.6.0",
       "github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect",
@@ -180,7 +180,7 @@
       "github.com/prometheus/client_model v0.6.2 // indirect",
       "github.com/prometheus/common v0.66.1 // indirect",
       "github.com/prometheus/procfs v0.16.1 // indirect",
-      "github.com/rabbitmq/amqp091-go v1.10.0 // indirect",
+      "github.com/rabbitmq/amqp091-go v1.13.0 // indirect",
       "github.com/stretchr/testify v1.11.1",
       "github.com/stripe/stripe-go/v83 v83.1.0",
       "go.uber.org/multierr v1.10.0 // indirect",
